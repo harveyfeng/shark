@@ -117,6 +117,9 @@ class SharkDriver(conf: HiveConf) extends Driver(conf) with LogHelper {
 
   var useTableRddSink = false
 
+  // True for the "show cached tables" command.
+  var shouldShowCachedTables = false
+
   override def init(): Unit = {
     // Forces the static code in SharkDriver to execute.
     SharkDriver.runStaticCode()
@@ -159,11 +162,21 @@ class SharkDriver(conf: HiveConf) extends Driver(conf) with LogHelper {
 
     try {
       val command = new VariableSubstitution().substitute(conf, cmd)
+
+      // Use "show tables" to get a list of tables, after applying optional
+      // regex and/or db arguments. The list is filtered for cached tables
+      // in getResults().
+      if (command.startsWith("show cached tables")) {
+        shouldShowCachedTables = true
+        cmd.replaceFirst("show cached tables", "show tables");
+      }
+
       context = new QueryContext(conf, useTableRddSink)
       context.setCmd(cmd)
       context.setTryCount(getTryCount())
 
       val tree = ParseUtils.findRootNonNullToken((new ParseDriver()).parse(command, context))
+      // Get an instance of BaseSemanticAnalyzer (ex. return SharkExplainSemanticAnalyzer for explain cmd)
       val sem = SharkSemanticAnalyzerFactory.get(conf, tree)
 
       // Do semantic analysis and plan generation
@@ -184,7 +197,7 @@ class SharkDriver(conf: HiveConf) extends Driver(conf) with LogHelper {
 
       sem.validate()
 
-      plan = new QueryPlan(command, sem,  perfLogger.getStartTime(PerfLogger.DRIVER_RUN))
+      plan = new QueryPlan(command, sem, perfLogger.getStartTime(PerfLogger.DRIVER_RUN))
 
       // Initialize FetchTask right here. Somehow Hive initializes it twice...
       if (sem.getFetchTask != null) {
@@ -234,6 +247,21 @@ class SharkDriver(conf: HiveConf) extends Driver(conf) with LogHelper {
     } finally {
       perfLogger.PerfLogEnd(LOG, PerfLogger.COMPILE)
       restoreSession(queryState)
+    }
+  }
+
+  override def getResults(res: JavaArrayList[String]): Boolean = {
+    if (shouldShowCachedTables) {
+      val allTables = new JavaArrayList[String]()
+      val isSuccess = super.getResults(allTables)
+      if (!isSuccess) {
+        val cacheManager = SharkEnv.cache
+        val cachedTables = cacheManager.getAllKeyStrings
+        cacheManager.getStorageStatus(res, allTables.filter(cachedTables.contains).toSet)
+      }
+      return isSuccess
+    } else {
+      return super.getResults(res)
     }
   }
 
