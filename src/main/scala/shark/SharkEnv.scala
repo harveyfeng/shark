@@ -22,9 +22,10 @@ import scala.collection.mutable.{HashMap, HashSet}
 import org.apache.hadoop.hive.ql.metadata.Hive
 import org.apache.hadoop.hive.conf.HiveConf
 
-import shark.memstore.CacheManager
+import shark.memstore.{CacheManager, StreamManager}
 
 import spark.SparkContext
+import spark.streaming.{Duration, StreamingContext}
 
 
 /** A singleton object for the master program. The slaves should not access this. */
@@ -72,6 +73,7 @@ object SharkEnv extends LogHelper {
 
   var sc: SparkContext = _
 
+  val streams: StreamManager = new StreamManager
   val cache: CacheManager = new CacheManager
 
   // The following line turns Kryo serialization debug log on. It is extremely chatty.
@@ -88,11 +90,23 @@ object SharkEnv extends LogHelper {
   */
   def stop() {
     logInfo("Shutting down Shark Environment")
+
+    // Drop cached tables
+    val db = Hive.get(new HiveConf)
+    for (table <- SharkEnv.cache.getAllKeyStrings) {
+      logInfo("Dropping cached table: " + table)
+      db.dropTable("default", table, false, true)
+    }
+
     // Stop the SparkContext
     if (SharkEnv.sc != null) {
       sc.stop()
       sc = null
     }
+
+    // Stop all StreamingContexts
+    streams.getSscs.foreach(_.stop())
+
   }
 
   def getEnv(variable: String) =

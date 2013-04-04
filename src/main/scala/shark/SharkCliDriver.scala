@@ -46,6 +46,7 @@ object SharkCliDriver {
 
   var prompt  = "shark"
   var prompt2 = "     " // when ';' is not yet seen.
+  val streamingPrompt = "shark-streaming"
 
   def main(args: Array[String]) {
     val hiveArgs = args.filterNot(_.equals("-loadRdds"))
@@ -185,22 +186,46 @@ object SharkCliDriver {
     var curDB = getFormattedDbMethod.invoke(null, conf, ss).asInstanceOf[String]
     var curPrompt = SharkCliDriver.prompt + curDB
     var dbSpaces = spacesForStringMethod.invoke(null, curDB).asInstanceOf[String]
+    var sharkMode = SharkConfVars.getVar(conf, SharkConfVars.EXEC_MODE)
+    var hasDStreamExpression = false
 
     line = reader.readLine(curPrompt + "> ")
     while (line != null) {
       if (!prefix.equals("")) {
         prefix += '\n'
       }
-      if (line.trim().endsWith(";") && !line.trim().endsWith("\\;")) {
+
+      // If we see an EVERY .. DO expression, stop only on DONE.
+      if (hasDStreamExpression && line.trim().endsWith("done")) {
+        line = prefix + line
+        // TODO: better workaround.
+        // Replace all ";" with ":", then add a ";" after the DONE. This is to bypass line
+        // splitting done in CliDriver.processLine().
+        line = line.replace(';', ':') + ";"
+        ret = cli.processLine(line)
+
+        prefix = ""
+        hasDStreamExpression = false
+      // What's "\\;" for?
+      } else if (line.trim().endsWith(";") && !line.trim().endsWith("\\;")) {
         line = prefix + line
         ret = cli.processLine(line)
         prefix = ""
-        val sharkMode = SharkConfVars.getVar(conf, SharkConfVars.EXEC_MODE) == "shark"
-        curPrompt = if (sharkMode) SharkCliDriver.prompt else CliDriver.prompt
+        sharkMode = SharkConfVars.getVar(conf, SharkConfVars.EXEC_MODE)
+        curPrompt = sharkMode match {
+          case "shark" => SharkCliDriver.prompt
+          case "streaming" => SharkCliDriver.streamingPrompt
+          case _ => CliDriver.prompt
+        }
       } else {
+
+        if (sharkMode == "streaming" && prefix == "") {
+          hasDStreamExpression = line.toLowerCase.startsWith("every")
+        }
+
         prefix = prefix + line
-        val sharkMode = SharkConfVars.getVar(conf, SharkConfVars.EXEC_MODE) == "shark"
-        curPrompt = if (sharkMode) SharkCliDriver.prompt2 else CliDriver.prompt2
+        val isSharkMode = SharkConfVars.getVar(conf, SharkConfVars.EXEC_MODE) == "shark"
+        curPrompt = if (isSharkMode) SharkCliDriver.prompt2 else CliDriver.prompt2
         curPrompt += dbSpaces
       }
       line = reader.readLine(curPrompt + "> ")
@@ -262,9 +287,12 @@ class SharkCliDriver(loadRdds: Boolean = false) extends CliDriver with LogHelper
           // There is a small overhead here to create a new instance of
           // SharkDriver for every command. But it saves us the hassle of
           // hacking CommandProcessorFactory.
+          val execMode = SharkConfVars.getVar(conf, SharkConfVars.EXEC_MODE)
           val qp: Driver =
-            if (SharkConfVars.getVar(conf, SharkConfVars.EXEC_MODE) == "shark") {
+            if (execMode == "shark") {
               new SharkDriver(hconf)
+            } else if (execMode == "streaming") {
+              new StreamingDriver(hconf)
             } else {
               proc.asInstanceOf[Driver]
             }

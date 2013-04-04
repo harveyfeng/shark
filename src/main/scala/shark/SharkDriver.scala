@@ -66,6 +66,13 @@ object SharkDriver extends LogHelper {
     new TaskFactory.taskTuple(classOf[SparkWork], classOf[SparkTask]),
     new TaskFactory.taskTuple(classOf[SharkExplainWork], classOf[SharkExplainTask])))
 
+  // TODO: move somewhere else...
+  // Task factory. Add Shark streaming specific tasks
+  import shark.execution.{CQWork, CQTask, StreamingLaunchWork, StreamingLaunchTask}
+  TaskFactory.taskvec.addAll(Seq(
+    new TaskFactory.taskTuple(classOf[StreamingLaunchWork], classOf[StreamingLaunchTask]),
+    new TaskFactory.taskTuple(classOf[CQWork], classOf[CQTask])))
+
   // Start the dashboard. Disabled by default. This was developed for the demo
   // at SIGMOD. We might turn it on later for general consumption.
   //dashboard.Dashboard.start()

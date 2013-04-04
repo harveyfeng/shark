@@ -33,11 +33,16 @@ object SharkSemanticAnalyzerFactory {
     val baseSem = SemanticAnalyzerFactory.get(conf, tree)
 
     if (baseSem.isInstanceOf[SemanticAnalyzer]) {
+      SharkConfVars.getVar(conf, SharkConfVars.EXEC_MODE) match {
+        case "streaming" => new StreamingSemanticAnalyzer(conf)
+        case "shark" => new SharkSemanticAnalyzer(conf)
+      }
       new SharkSemanticAnalyzer(conf)
     } else if (baseSem.isInstanceOf[ExplainSemanticAnalyzer] &&
         SharkConfVars.getVar(conf, SharkConfVars.EXPLAIN_MODE) == "shark") {
       new SharkExplainSemanticAnalyzer(conf)
     } else {
+      // TODO: StreamingDDLAnalyzer? SharkDDLAnalyzer? Mainly to control dropping data?
       baseSem
     }
   }
