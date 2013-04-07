@@ -8,15 +8,14 @@ import org.apache.hadoop.conf.Configuration
 
 import shark.execution.{SparkTask, StreamScanOperator}
 
-import spark.streaming.{Duration
-  }
+import spark.streaming.{Duration}
 
 /**
  * Some metadata neede to drive continuous query execution.
  */
 class StreamingCommandContext(
-		val conf: Configuration,
-	  var useTableRddSinkOp: Boolean)
+  	val conf: Configuration,
+  	var useTableRddSinkOp: Boolean)
 	extends QueryContext(conf, useTableRddSinkOp) {
 
 	// If command is a CREATE STREAM or CREATE STREAM AS
