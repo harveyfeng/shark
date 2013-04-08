@@ -1,4 +1,4 @@
-package shark.execution
+package shark.streaming
 
 import java.util.{ArrayList, Arrays}
 
@@ -19,6 +19,7 @@ import org.apache.hadoop.io.Writable
 
 import shark.{SharkConfVars, SharkEnv}
 import shark.execution.serialization.XmlSerializer
+import shark.execution.{Operator, TableScanOperator}
 import shark.memstore.{TableStats, TableStorage}
 import spark.RDD
 import spark.rdd.{PartitionPruningRDD, UnionRDD}
@@ -55,11 +56,11 @@ class StreamScanOperator extends TableScanOperator {
 
     if (currentComputeTime == null) {
       // "Real-time" query
-      currentComputeTime = SharkEnv.streams.getLatestComputeTime(inputDStream)
-    } else {
-      // A CQ. Update the latest compute time
-      SharkEnv.streams.updateComputeTime(inputDStream, currentComputeTime)
+      currentComputeTime = Time(System.currentTimeMillis)
     }
+
+    // Update the latest compute time
+    SharkEnv.streams.updateComputeTime(inputDStream, currentComputeTime)
 
     // If there's no window specified, just use the single RDD generated at each slideDuration.
     // Note: not using WindoweDStream, since we would have to create a new one every time the

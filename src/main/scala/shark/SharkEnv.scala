@@ -22,7 +22,8 @@ import scala.collection.mutable.{HashMap, HashSet}
 import org.apache.hadoop.hive.ql.metadata.Hive
 import org.apache.hadoop.hive.conf.HiveConf
 
-import shark.memstore.{CacheManager, StreamManager}
+import shark.memstore.CacheManager
+import shark.streaming.StreamManager
 
 import spark.SparkContext
 import spark.streaming.{Duration, StreamingContext}
@@ -96,6 +97,12 @@ object SharkEnv extends LogHelper {
     for (table <- SharkEnv.cache.getAllKeyStrings) {
       logInfo("Dropping cached table: " + table)
       db.dropTable("default", table, false, true)
+    }
+
+    // Drop streams
+    for (stream <- SharkEnv.streams.getAllStreams) {
+      logInfo("Dropping stream: " + stream)
+      db.dropTable("default", stream, false, true)
     }
 
     // Stop the SparkContext

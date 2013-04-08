@@ -1,4 +1,4 @@
-package shark.parse
+package shark.streaming
 
 import scala.collection.JavaConversions._
 
@@ -14,7 +14,7 @@ import spark.streaming.Duration
 * Functions for traversing ASTs from commands involving streams. In Hive, this part is
 * all in SemanticAnalyzer.java
 */
-object StreamASTTraversal {
+object ASTTraversal {
 
   // Path from root: TOK_QUERY -> TOK_FROM -> TOK_TABREF -> TOK_TABNAME -> <table name>
   //                                                     -> <alias>

@@ -68,7 +68,7 @@ object SharkDriver extends LogHelper {
 
   // TODO: move somewhere else...
   // Task factory. Add Shark streaming specific tasks
-  import shark.execution.{CQWork, CQTask, StreamingLaunchWork, StreamingLaunchTask}
+  import shark.streaming.{CQWork, CQTask, StreamingLaunchWork, StreamingLaunchTask}
   TaskFactory.taskvec.addAll(Seq(
     new TaskFactory.taskTuple(classOf[StreamingLaunchWork], classOf[StreamingLaunchTask]),
     new TaskFactory.taskTuple(classOf[CQWork], classOf[CQTask])))

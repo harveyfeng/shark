@@ -39,6 +39,8 @@ import org.apache.hadoop.hive.ql.processors.{CommandProcessor, CommandProcessorF
 import org.apache.hadoop.hive.ql.session.SessionState
 import org.apache.hadoop.hive.shims.ShimLoader
 
+import shark.streaming.StreamingDriver
+
 import spark.SparkContext
 
 
@@ -198,6 +200,7 @@ object SharkCliDriver {
         line = prefix + line
         ret = cli.processLine(line)
         prefix = ""
+        sharkMode = SharkConfVars.getVar(conf, SharkConfVars.EXEC_MODE)
         curPrompt = sharkMode match {
           case "shark" => SharkCliDriver.prompt
           case "streaming" => SharkCliDriver.streamingPrompt
@@ -212,8 +215,15 @@ object SharkCliDriver {
         }
         curPrompt += dbSpaces
       }
-      sharkMode = SharkConfVars.getVar(conf, SharkConfVars.EXEC_MODE)
+
       line = reader.readLine(curPrompt + "> ")
+      // =======================================
+      // for debugging
+      if (line.contains("check streams")) {
+        val streamManager = SharkEnv.streams
+        line = reader.readLine(curPrompt + "> ")
+      }
+      // =======================================
     }
 
     ss.close()

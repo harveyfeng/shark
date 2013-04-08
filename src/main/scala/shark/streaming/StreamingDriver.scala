@@ -1,4 +1,4 @@
-package shark
+package shark.streaming
 
 import java.util.{ArrayList => JavaArrayList, List => JavaList, Date}
 
@@ -17,10 +17,10 @@ import org.apache.hadoop.hive.ql.session.SessionState
 import org.apache.hadoop.hive.serde2.{SerDe, SerDeUtils}
 import org.apache.hadoop.util.StringUtils
 
-import shark.execution.{CQWork, CQTask, SparkTask, SparkWork, StreamingLaunchWork,
-  StreamingLaunchTask, TableRDD}
+import shark.execution.{SparkTask, SparkWork, TableRDD}
 import shark.memstore.ColumnarSerDe
-import shark.parse.{QueryContext, SharkSemanticAnalyzerFactory, StreamingCommandContext}
+import shark.parse.{QueryContext, SharkSemanticAnalyzerFactory}
+import shark.{LogHelper, SharkEnv, SharkDriver}
 
 import spark.streaming.{StreamingContext, Duration, Seconds}
 
@@ -56,7 +56,7 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
     try {
       var command = new VariableSubstitution().substitute(conf, cmd)
       context = new StreamingCommandContext(conf, useTableRddSink)
-      context.setCmd(cmd)
+      context.setCmd(command)
       context.setTryCount(getTryCount())
 
       // TODO: remove after parsing works.
@@ -76,12 +76,12 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
 
         // In StreamingSemanticAnalyzer, get the window specs for each source table
       }
-      // If this is a stream creation, CREATE STREAM ...
+      // If this is a stream creation, CREATE STREAM <schema> TBLPROPERTIES("batch"=<...>, "path"=<...>);
       if (command.toLowerCase.contains("create stream")) {
         command = command.replaceFirst("stream", "table")
         cmdContext.isCreateStream = true
-        // Batch duration, source path, will be read from TBLPROPERTIES("batch"=..., "directory"...)
       }
+      context.setCmd(command)
 
       val tree = ParseUtils.findRootNonNullToken((new ParseDriver()).parse(command, context))
       val sem = SharkSemanticAnalyzerFactory.get(conf, tree)

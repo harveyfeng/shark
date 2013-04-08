@@ -1,4 +1,4 @@
-package shark.execution
+package shark.streaming
 
 import scala.collection.JavaConversions._
 
@@ -10,8 +10,8 @@ import org.apache.hadoop.hive.ql.plan.api.StageType
 import org.apache.hadoop.hive.ql.QueryPlan;
 import org.apache.hadoop.hive.ql.session.SessionState
 
+import shark.execution.{SparkTask, TableScanOperator}
 import shark.{LogHelper, SharkEnv}
-import shark.parse.StreamingCommandContext
 
 import spark.RDD
 import spark.streaming.{DStream, StreamingContext, Time}
@@ -20,8 +20,9 @@ import spark.streaming.{DStream, StreamingContext, Time}
 class StreamingLaunchWork(val ssc: StreamingContext) extends java.io.Serializable
 
 /**
- * StreamingLaunchTask starts the StreamingContext that will execute PQ plans
- * composed of RDD and stream operators.
+ * StreamingLaunchTask starts the StreamingContext.
+ * 
+ * TODO: use TaskContext.executeOnCompleteCallbacks()?
  */
 class StreamingLaunchTask extends org.apache.hadoop.hive.ql.exec.Task[StreamingLaunchWork]
   with java.io.Serializable with LogHelper {
@@ -51,8 +52,11 @@ class CQWork(
 
 class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
   with java.io.Serializable with LogHelper {
+  
+  var isInitialized = false
 
   override def initialize(conf: HiveConf, queryPlan: QueryPlan, driverContext: DriverContext) {
+    super.initialize(conf, queryPlan, driverContext)
     work.sparkTask.initialize(conf, queryPlan, driverContext)
   }
 
@@ -60,13 +64,25 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
     val cmdContext = work.cmdContext
     val sparkTask = work.sparkTask
     val executor = work.executor
+    
+    
+    val terminalOp = sparkTask.getWork.terminalOperator
+    val tableScanOps = terminalOp.returnTopOperators().asInstanceOf[Seq[TableScanOperator]]
 
     val cq = (rdd: RDD[_], time: Time) => {
       for (streamScanOp <- cmdContext.streamOps) {
         streamScanOp.currentComputeTime = time
       }
-      // Execute main query
-      sparkTask.executeTask()
+      // Execute main query.
+      // Initialize tableScanDesc every time because it sets
+      // table partition metadata.
+      if (isInitialized) {
+        sparkTask.initializeTableScanTableDesc(tableScanOps)
+        terminalOp.execute()
+      } else {
+        sparkTask.executeTask()
+        isInitialized = true
+      }
       // Execute dependencies
       for (childTask <- sparkTask.getChildTasks) {
         childTask.executeTask()

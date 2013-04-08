@@ -1,4 +1,4 @@
-package shark.parse
+package shark.streaming
 
 import java.util.{HashMap => JavaHashMap}
 
@@ -6,12 +6,13 @@ import scala.collection.mutable.ArrayBuffer
 
 import org.apache.hadoop.conf.Configuration
 
-import shark.execution.{SparkTask, StreamScanOperator}
+import shark.execution.SparkTask
+import shark.parse.QueryContext
 
 import spark.streaming.{Duration}
 
 /**
- * Some metadata neede to drive continuous query execution.
+ * Some metadata needed to drive continuous query execution.
  */
 class StreamingCommandContext(
   	val conf: Configuration,

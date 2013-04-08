@@ -22,7 +22,7 @@ import org.apache.hadoop.hive.ql.parse.{ASTNode, BaseSemanticAnalyzer, SemanticA
   ExplainSemanticAnalyzer, SemanticAnalyzer}
 
 import shark.SharkConfVars
-
+import shark.streaming.StreamingSemanticAnalyzer
 
 object SharkSemanticAnalyzerFactory {
 
@@ -37,7 +37,6 @@ object SharkSemanticAnalyzerFactory {
         case "streaming" => new StreamingSemanticAnalyzer(conf)
         case "shark" => new SharkSemanticAnalyzer(conf)
       }
-      new SharkSemanticAnalyzer(conf)
     } else if (baseSem.isInstanceOf[ExplainSemanticAnalyzer] &&
         SharkConfVars.getVar(conf, SharkConfVars.EXPLAIN_MODE) == "shark") {
       new SharkExplainSemanticAnalyzer(conf)
