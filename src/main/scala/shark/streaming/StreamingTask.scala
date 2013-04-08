@@ -52,7 +52,7 @@ class CQWork(
 
 class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
   with java.io.Serializable with LogHelper {
-  
+
   var isInitialized = false
 
   override def initialize(conf: HiveConf, queryPlan: QueryPlan, driverContext: DriverContext) {
@@ -64,8 +64,7 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
     val cmdContext = work.cmdContext
     val sparkTask = work.sparkTask
     val executor = work.executor
-    
-    
+
     val terminalOp = sparkTask.getWork.terminalOperator
     val tableScanOps = terminalOp.returnTopOperators().asInstanceOf[Seq[TableScanOperator]]
 

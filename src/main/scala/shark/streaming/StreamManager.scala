@@ -28,7 +28,7 @@ class StreamManager {
   // For testing/debugging
   private val _latestComputeTimes = new JavaHashMap[DStream[_], Time]()
   private val _commandContexts = new ArrayBuffer[StreamingCommandContext]()
-  
+
   if (MetadataCleaner.getDelaySeconds < 0) {
     MetadataCleaner.setDelaySeconds(3600)
   }

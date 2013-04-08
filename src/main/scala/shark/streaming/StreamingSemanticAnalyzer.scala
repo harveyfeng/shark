@@ -88,7 +88,7 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
       SessionState.get().setCommandType(HiveOperation.QUERY)
       ASTTraversal.processQueryNode(ast, cmdContext)
     }
-    
+
     // Generate Shark SparkTasks and get parse info.
     super.analyzeInternal(ast)
     pctx = getParseContext()
@@ -153,8 +153,7 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
           cmdContext.duration = Duration(durationStr.toLong * 1000)
         }
         cmdContext.isDerivedStream = true
-
-      } 
+      }
 
       // TODO: isArchiveStream should be set during AST traversal.
       if (pctx.getQB.getParseInfo.isInsertToTable && !qb.isCTAS) {
@@ -195,7 +194,7 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
     sourceDStreams: Seq[DStream[_]],
     sparkTask: SparkTask
   ) {
-    
+
     rootTasks.clear()
 
     val executor = getExecutor(sourceDStreams, cmdContext.duration)
@@ -219,11 +218,11 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
         val ssc = SharkEnv.streams.getSsc(executor)
         val launchTask = TaskFactory.get(
             new StreamingLaunchWork(SharkEnv.streams.getSsc(executor)), conf)
-        
+
         if (ssc == null) {
           assert(ssc != null)
         }
-            
+
         SharkEnv.streams.addStartedSsc(ssc)
         cqTask.addDependentTask(launchTask)
       }
