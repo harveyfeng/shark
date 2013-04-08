@@ -295,7 +295,7 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
       val crtTblDesc: CreateTableDesc = qb.getTableDesc
 
       // Use reflection to call validateCreateTable, which is private.
-      val validateCreateTableMethod = this.getClass.getSuperclass.getDeclaredMethod(
+      val validateCreateTableMethod = classOf[SharkSemanticAnalyzer].getSuperclass.getDeclaredMethod(
         "validateCreateTable", classOf[CreateTableDesc])
       validateCreateTableMethod.setAccessible(true)
       validateCreateTableMethod.invoke(this, crtTblDesc)
