@@ -58,6 +58,9 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
   override def initialize(conf: HiveConf, queryPlan: QueryPlan, driverContext: DriverContext) {
     super.initialize(conf, queryPlan, driverContext)
     work.sparkTask.initialize(conf, queryPlan, driverContext)
+    for (childTask <- work.sparkTask.getChildTasks) {
+      childTask.initialize(conf, queryPlan, driverContext)
+    }
   }
 
   override def execute(driverContext: DriverContext): Int = {
