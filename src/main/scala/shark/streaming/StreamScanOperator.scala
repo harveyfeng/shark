@@ -24,7 +24,7 @@ import shark.memstore.{TableStats, TableStorage}
 import spark.RDD
 import spark.rdd.{PartitionPruningRDD, UnionRDD}
 
-import spark.streaming.{Duration, Interval, Time}
+import spark.streaming.{DStream, Duration, Interval, Time}
 
 /**
  * Replaces TableScanOperator as the TopOperator in Shark operator trees.
@@ -35,24 +35,43 @@ import spark.streaming.{Duration, Interval, Time}
  */
 class StreamScanOperator extends TableScanOperator {
 
-  @BeanProperty var tableName: String = _
+  @transient var tableName: String = _
 
-  // TODO: figure out which vars actually need @BeanProperty
+  // TODO: figure out which vars actually need @BeanProperty.
   // Time at which the DStream generates an RDD for the table being
   // scanned.
-  @BeanProperty var currentComputeTime: Time = _
+  @transient var currentComputeTime: Time = _
 
   // Seconds specified by LAST.
-  @BeanProperty var windowDuration: Duration = _
+  @transient var windowDuration: Duration = _
+
+  @transient var inputDStream: DStream[_] = _
+  @transient var isIntermediateStream: Boolean = _
+
+  // Initialization in StreamingTask
+  def initializeInputStream() {
+    super.initializeOnMaster()
+    // Get the inputDStream. We must use WindowedDStream, since it
+    // sets rememberDuration for dependencies. This is called before SSC
+    // starts.
+    val stream = SharkEnv.streams.getStream(tableName)
+    isIntermediateStream = SharkEnv.streams.isIntermediateStream(inputDStream)
+
+    // Sanity check
+    assert(stream != null)
+
+    if (!(windowDuration.milliseconds == null) &&
+        (windowDuration.milliseconds == stream.slideDuration.milliseconds)) {
+      inputDStream = stream
+    } else {
+      inputDStream = stream.window(windowDuration)
+    }
+  }
 
   // Process the RDD input from the transform function.
   override def execute(): RDD[_] = {
     // Get the inputDStream from the cache. For FileSinkInputDStreams, this should
     // be a transformed inputDStream with HadoopRDDs.
-    val inputDStream = SharkEnv.streams.getStream(tableName)
-
-    // Sanity check
-    assert(inputDStream != null)
 
     if (currentComputeTime == null) {
       // "Real-time" query
@@ -62,13 +81,13 @@ class StreamScanOperator extends TableScanOperator {
     // Update the latest compute time
     SharkEnv.streams.updateComputeTime(inputDStream, currentComputeTime)
 
-    // If there's no window specified, just use the single RDD generated at each slideDuration.
-    // Note: not using WindoweDStream, since we would have to create a new one every time the
-    // source DStream changes. Easier to just slice it manually.
-    val sliceDuration = if (windowDuration == null) inputDStream.slideDuration else windowDuration
-    val fromDuration = currentComputeTime - sliceDuration + inputDStream.slideDuration
-    val inputRdds = inputDStream.slice(fromDuration, currentComputeTime).asInstanceOf[Seq[RDD[Any]]]
-    val unionedInputRDDs = SharkEnv.sc.union(inputRdds)
+    val inputRdds = inputDStream.slice(currentComputeTime, currentComputeTime).asInstanceOf[Seq[RDD[Any]]]
+    //val unionedInputRDDs = SharkEnv.sc.union(inputRdds)
+    val unionedInputRDDs = inputRdds.head
+    val count = unionedInputRDDs.count()
+    if (count > 0 || tableName == "src2_stream") {
+      val break = 0
+    }
 
     // Delegate partition processing to TableScanOperator once we have the duration RDDs.
     val formattedRDD = Operator.executeProcessPartition(this, unionedInputRDDs)

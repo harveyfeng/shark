@@ -45,10 +45,12 @@ object ASTTraversal {
     }
 
     def traverseChildren(children: JavaList[Node]) {
-      for (child <- children) {
-        child match {
-          case astNode: ASTNode => traverseNode(astNode)
-          case _ => Unit
+      if (children != null) {
+        for (child <- children) {
+          child match {
+            case astNode: ASTNode => traverseNode(astNode)
+            case _ => Unit
+          }
         }
       }
     }
