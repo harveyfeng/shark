@@ -60,7 +60,7 @@ class StreamScanOperator extends TableScanOperator {
     // Sanity check
     assert(stream != null)
 
-    if (!(windowDuration.milliseconds == null) &&
+    if (!(windowDuration == null) &&
         (windowDuration.milliseconds == stream.slideDuration.milliseconds)) {
       inputDStream = stream
     } else {

@@ -106,8 +106,10 @@ class StreamManager {
       case _ => createNewSsc(batchDuration)
     }
     // Note: only support new hadoop.mapreduce API. Hive uses the old one (package hadoop.mapred).
-    // should throw an exception. Get mapred.InputFormatClass from CreateTableDesc in SemanticAnalyzer.
-    val newStream = ssc.fileStream[LongWritable, Text, TextInputFormat](readDirectory).map(_._2)
+    // should throw an exception.
+    // For some reason fileStream.map(_._2) results in Text objects with duplicate values...
+    val newStream = ssc.fileStream[LongWritable, Text, TextInputFormat](readDirectory)
+        .map(tup => new Text(tup._2))
     _streamToSsc.put(newStream, ssc)
     _keyToDStream.put(name.toLowerCase, newStream)
   }
