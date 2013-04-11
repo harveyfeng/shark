@@ -35,7 +35,7 @@ import spark.streaming.{DStream, Duration, Interval, Time}
  */
 class StreamScanOperator extends TableScanOperator {
 
-  @transient var tableName: String = _
+  @BeanProperty var tableName: String = _
 
   // TODO: figure out which vars actually need @BeanProperty.
   // Time at which the DStream generates an RDD for the table being
@@ -46,7 +46,7 @@ class StreamScanOperator extends TableScanOperator {
   @transient var windowDuration: Duration = _
 
   @transient var inputDStream: DStream[_] = _
-  @transient var isIntermediateStream: Boolean = _
+  @BeanProperty var isIntermediateStream: Boolean = _
 
   // Initialization in StreamingTask
   def initializeInputStream() {
@@ -83,14 +83,11 @@ class StreamScanOperator extends TableScanOperator {
 
     val inputRdds = inputDStream.slice(currentComputeTime, currentComputeTime).asInstanceOf[Seq[RDD[Any]]]
     //val unionedInputRDDs = SharkEnv.sc.union(inputRdds)
-    val unionedInputRDDs = inputRdds.head
-    val count = unionedInputRDDs.count()
-    if (count > 0 || tableName == "src2_stream") {
-      val break = 0
-    }
+    val unionedInputRDD = inputRdds.head
 
+    if (isIntermediateStream) return unionedInputRDD
     // Delegate partition processing to TableScanOperator once we have the duration RDDs.
-    val formattedRDD = Operator.executeProcessPartition(this, unionedInputRDDs)
+    val formattedRDD = Operator.executeProcessPartition(this, unionedInputRDD)
 
     return formattedRDD
   }
