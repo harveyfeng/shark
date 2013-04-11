@@ -5,6 +5,9 @@ import scala.collection.mutable.ArrayBuffer
 
 import java.util.{HashMap => JavaHashMap, HashSet => JavaHashSet}
 
+import org.apache.hadoop.io.{LongWritable, Text, Writable}
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat
+
 import shark.SharkEnv
 
 import spark.storage.StorageLevel
@@ -23,6 +26,7 @@ class StreamManager {
   private val _durationToSsc = new JavaHashMap[Duration, StreamingContext]()
   // TODO: this should only contain inputDStreams
   private val _streamToSsc = new JavaHashMap[DStream[_], StreamingContext]()
+  private val _intermediateStreams = new JavaHashSet[DStream[_]]()
   private val _startedSscs = new JavaHashSet[StreamingContext]()
 
   // For testing/debugging
@@ -46,8 +50,8 @@ class StreamManager {
   def getSsc(stream: DStream[_]): StreamingContext = {
     var ssc = _streamToSsc.get(stream)
     var parent = stream.dependencies(0)
-    // Note: we only use TransformedDStream, so all intermediate
-    // DStreams have on dependency.
+    // Note: we only use TransformedDStream and WindowedDStream, so all intermediate
+    // DStreams have one dependency.
     while (ssc == null) {
       ssc = _streamToSsc.get(parent)
       parent = parent.dependencies(0)
@@ -74,11 +78,16 @@ class StreamManager {
     _keyToDStream.keys.collect { case k: String => k } toSeq
   }
 
+  // TODO: better abstraction...TransformedDStreams are created in StreamingTask,
+  // yet FileDStreams are created in StreamManager.
   def putIntermediateStream(name: String, stream: DStream[_], parent: DStream[_]) {
   	val ssc = _streamToSsc.get(parent)
   	_keyToDStream.put(name, stream)
   	_streamToSsc.put(stream, ssc)
+  	_intermediateStreams.add(stream)
   }
+
+  def isIntermediateStream(stream: DStream[_]) = _intermediateStreams.contains(stream)
 
   def removeStream(key: String) {
   	val stream = _keyToDStream.get(key)
@@ -87,19 +96,20 @@ class StreamManager {
     _latestComputeTimes.remove(stream)
   }
 
-  def createTextFileStream(
+  // TODO: move to SharkStreamingContext?
+  def createFileStream(
       name: String,
       readDirectory: String,
-      batchDuration: Duration,
-      storageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK) {
+      batchDuration: Duration) {
     val ssc = _durationToSsc.get(batchDuration) match {
       case ssc: StreamingContext => ssc
       case _ => createNewSsc(batchDuration)
     }
-    val newStream = ssc.textFileStream(readDirectory)
+    // Note: only support new hadoop.mapreduce API. Hive uses the old one (package hadoop.mapred).
+    // should throw an exception. Get mapred.InputFormatClass from CreateTableDesc in SemanticAnalyzer.
+    val newStream = ssc.fileStream[LongWritable, Text, TextInputFormat](readDirectory).map(_._2)
     _streamToSsc.put(newStream, ssc)
     _keyToDStream.put(name.toLowerCase, newStream)
-    newStream.persist(storageLevel)
   }
 
   private def createNewSsc(batchDuration: Duration): StreamingContext = {

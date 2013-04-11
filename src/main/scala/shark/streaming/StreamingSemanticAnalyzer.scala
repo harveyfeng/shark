@@ -26,6 +26,7 @@ import spark.streaming.{DStream, Duration, StreamingContext}
 import spark.RDD
 
 
+// TODO: Needs better abstraction
 class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(conf) {
 
   override def analyzeInternal(ast: ASTNode): Unit = {
@@ -185,8 +186,13 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
     val tableName = td.getTableName
     // Use seconds for now
     val duration = Duration(batchDuration * 1000)
+
+    if (td.getInputFormat.isInstanceOf[org.apache.hadoop.mapred.TextInputFormat]) {
+      throw new SemanticException(
+        "Shark streaming only supports TextInputFormat for Hive-based file streams")
+    }
     // This creates the FileInputStream, and handles metadata additions.
-    SharkEnv.streams.createTextFileStream(tableName, readDirectory, duration)
+    SharkEnv.streams.createFileStream(tableName, readDirectory, duration)
   }
 
   def genStreamingTasks(
@@ -206,11 +212,19 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
       // SparkTask -> {MoveTask, DDLTask}
       // Discard the MoveTask. Replace SparkTask with CQTask.
       // New plan: CQTask -> DDLTask
-      cqTask.addDependentTask(sparkTask.getChildTasks.get(1))
+      val createTblTask = sparkTask.getChildTasks.get(1)
+      cqTask.addDependentTask(createTblTask)
       val oldChildTasks = sparkTask.getChildTasks
       while (!oldChildTasks.isEmpty) {
         sparkTask.removeDependentTask(oldChildTasks.head)
       }
+
+      // Change the SerDe of this intermediate table to one that uses
+      // StandardStructObjectInspector.
+      val createTblWork = createTblTask.getWork.asInstanceOf[DDLWork]
+      val createTblDesc = createTblWork.getCreateTblDesc
+      createTblDesc.setSerName(classOf[TransformedDStreamSerDe].getName)
+
     } else if (cmdContext.isArchiveStream) {
       // If the StreamingContext used for this executor DStream hasn't been started, add a
       // StreamingLaunchTask as a dependency to the CQTask, which adds an output DStream (foreach).

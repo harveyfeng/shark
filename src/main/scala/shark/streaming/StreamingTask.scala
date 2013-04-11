@@ -10,11 +10,11 @@ import org.apache.hadoop.hive.ql.plan.api.StageType
 import org.apache.hadoop.hive.ql.QueryPlan;
 import org.apache.hadoop.hive.ql.session.SessionState
 
-import shark.execution.{SparkTask, TableScanOperator}
+import shark.execution.{SparkTask, TableScanOperator, TableRDD}
 import shark.{LogHelper, SharkEnv}
 
 import spark.RDD
-import spark.streaming.{DStream, StreamingContext, Time}
+import spark.streaming.{Duration, DStream, StreamingContext, Time}
 
 
 class StreamingLaunchWork(val ssc: StreamingContext) extends java.io.Serializable
@@ -66,31 +66,39 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
   override def execute(driverContext: DriverContext): Int = {
     val cmdContext = work.cmdContext
     val sparkTask = work.sparkTask
-    val executor = work.executor
 
     val terminalOp = sparkTask.getWork.terminalOperator
     val tableScanOps = terminalOp.returnTopOperators().asInstanceOf[Seq[TableScanOperator]]
+
+    for (streamScanOp <- cmdContext.streamOps) {
+      streamScanOp.initializeInputStream()
+    }
+
+    // If the executor needs a window...
+    val executor = getExecutor(cmdContext.streamOps, cmdContext.duration)
 
     val cq = (rdd: RDD[_], time: Time) => {
       for (streamScanOp <- cmdContext.streamOps) {
         streamScanOp.currentComputeTime = time
       }
+      var tableRdd: TableRDD = null
       // Execute main query.
-      // Initialize tableScanDesc every time because it sets
-      // table partition metadata.
       if (isInitialized) {
+        // Initialize tableScanDesc every time because it sets
+        // table partition metadata.
         sparkTask.initializeTableScanTableDesc(tableScanOps)
-        terminalOp.execute()
+        val sinkRdd = terminalOp.execute().asInstanceOf[RDD[Any]]
+        tableRdd = new TableRDD(sinkRdd, sparkTask.getWork.resultSchema, terminalOp.objectInspector)
       } else {
         sparkTask.executeTask()
+        tableRdd = sparkTask.tableRdd
+
         isInitialized = true
       }
       // Execute dependencies
       for (childTask <- sparkTask.getChildTasks) {
         childTask.executeTask()
       }
-
-      val tableRdd = sparkTask.tableRdd
 
       tableRdd
     }
@@ -102,6 +110,18 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
       executor.foreach((rdd, time) => cq(rdd, time))
     }
     0
+  }
+
+  def getExecutor(scanOps: Seq[StreamScanOperator], duration: Duration): DStream[_] = {
+    // Use the DStream with smallest slideDuration.
+    val sourceDStream = scanOps.sortWith((a, b) => a.inputDStream.slideDuration < b.inputDStream.slideDuration).head
+    // If the user provides a batch duration and there are > 1 sources, trust that
+    // it will be a valid duration (for now)
+    if (duration == null || duration == sourceDStream.inputDStream.slideDuration) {
+      return sourceDStream.inputDStream
+    } else {
+      sourceDStream.inputDStream.window(duration, duration)
+    }
   }
 
   override def getType = StageType.MAPRED
