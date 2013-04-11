@@ -192,7 +192,52 @@ object SharkCliDriver {
     var sharkMode = SharkConfVars.getVar(conf, SharkConfVars.EXEC_MODE)
 
     line = reader.readLine(curPrompt + "> ")
+
+    // =======================================
+    // for debugging
+    val lines = "drop table if exists src_stream;" +
+      "drop table if exists src2_stream;" +
+      "drop table if exists src_archive;" +
+      "create stream src_stream(key string, value string) tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/kv1.txt');" +
+      "create stream src2_stream as select * from src_stream window_4;" +
+      "create table src_archive(key string, value string);" +
+      "every '4 seconds' insert into table src_archive select * from src2_stream window_4;"
+
+    val lines2 = "drop table if exists src_stream;" +
+      "drop table if exists src2_stream;" +
+      "drop table if exists src_archive;" +
+      "create stream src_stream(key string, value string) tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/kv1.txt');" +
+      "create stream src2_stream as select * from src_stream window_4;" +
+      "create table src_archive(key string, value string);" +
+      "every '4 seconds' insert into table src_archive select * from src_stream window_4;"
+
+    // =======================================
+
     while (line != null) {
+      if (line.contains("restart")) {
+        SharkEnv.streams.getSscs.foreach(_.start())
+        line = reader.readLine(curPrompt + "> ")
+      }
+      if (line.contains("start2")) {
+        for (linecmd <- lines2.split(";")) {
+          ret = cli.processLine(linecmd)
+        }
+        line = reader.readLine(curPrompt + "> ")
+      }
+      if (line.contains("start")) {
+        for (linecmd <- lines.split(";")) {
+          ret = cli.processLine(linecmd)
+        }
+        line = reader.readLine(curPrompt + "> ")
+      }
+      if (line.contains("stop")) {
+        SharkEnv.streams.getSscs.foreach(_.stop())
+        line = reader.readLine(curPrompt + "> ")
+      }
+      if (line.contains("check streams")) {
+        val streamManager = SharkEnv.streams
+        line = reader.readLine(curPrompt + "> ")
+      }
       if (!prefix.equals("")) {
         prefix += '\n'
       }
@@ -217,13 +262,6 @@ object SharkCliDriver {
       }
 
       line = reader.readLine(curPrompt + "> ")
-      // =======================================
-      // for debugging
-      if (line.contains("check streams")) {
-        val streamManager = SharkEnv.streams
-        line = reader.readLine(curPrompt + "> ")
-      }
-      // =======================================
     }
 
     ss.close()
