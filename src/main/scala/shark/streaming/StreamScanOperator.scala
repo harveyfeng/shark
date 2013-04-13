@@ -85,7 +85,6 @@ class StreamScanOperator extends TableScanOperator {
     //val unionedInputRDDs = SharkEnv.sc.union(inputRdds)
     val unionedInputRDD = inputRdds.head
 
-    if (isIntermediateStream) return unionedInputRDD
     // Delegate partition processing to TableScanOperator once we have the duration RDDs.
     val formattedRDD = Operator.executeProcessPartition(this, unionedInputRDD)
 

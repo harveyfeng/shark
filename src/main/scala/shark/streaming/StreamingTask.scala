@@ -100,7 +100,7 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
         childTask.executeTask()
       }
 
-      tableRdd
+      tableRdd.prev
     }
 
     if (cmdContext.isDerivedStream) {
