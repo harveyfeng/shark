@@ -80,6 +80,12 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
       if (command.toLowerCase.contains("create stream")) {
         command = command.replaceFirst("stream", "table")
         cmdContext.isCreateStream = true
+        if (command.toLowerCase.contains("as select")) {
+          val splitIndex = command.indexOf("as select")
+          command = command.substring(0, splitIndex) +
+            "TBLPROPERTIES('shark.cache'='true', 'shark.cache.storageLevel'='MEMORY_ONLY') " +
+            command.substring(splitIndex, command.length)
+        }
       }
       context.setCmd(command)
 

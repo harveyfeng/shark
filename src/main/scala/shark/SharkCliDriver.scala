@@ -195,19 +195,19 @@ object SharkCliDriver {
 
     // =======================================
     // for debugging
-    val lines = "drop table if exists src_stream;" +
-      "drop table if exists src2_stream;" +
-      "drop table if exists src_archive;" +
-      "create stream src_stream(key string, value string) tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/kv1.txt');" +
-      "create stream src2_stream as select * from src_stream window_4;" +
-      "create table src_archive(key string, value string);" +
-      "every '4 seconds' insert into table src_archive select * from src2_stream window_4;"
-
     val lines2 = "drop table if exists src_stream;" +
       "drop table if exists src2_stream;" +
       "drop table if exists src_archive;" +
-      "create stream src_stream(key string, value string) tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/kv1.txt');" +
-      "create table src_archive(key string, value string);" +
+      "create stream src_stream(key string, value string, time bigint) tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/kv1.txt');" +
+      "create stream src2_stream as select * from src_stream window_4;" +
+      "create table src_archive(key string, value string, time bigint);" +
+      "every '4 seconds' insert into table src_archive select * from src2_stream window_4;"
+
+    val lines = "drop table if exists src_stream;" +
+      "drop table if exists src2_stream;" +
+      "drop table if exists src_archive;" +
+      "create stream src_stream(key int, value string, time bigint) tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/kv1.txt');" +
+      "create table src_archive(key int, value string, time bigint);" +
       "every '4 seconds' insert into table src_archive select * from src_stream window_4;"
 
     // =======================================

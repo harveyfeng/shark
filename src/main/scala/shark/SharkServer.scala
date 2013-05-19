@@ -51,6 +51,8 @@ import org.apache.thrift.transport.TServerSocket
 import org.apache.thrift.transport.TTransport
 import org.apache.thrift.transport.TTransportFactory
 
+import shark.streaming.StreamingDriver
+
 import spark.SparkEnv
 
 
@@ -173,7 +175,8 @@ class SharkServerHandler extends HiveServerHandler with LogHelper {
   SharkConfVars.initializeWithDefaults(conf)
 
   private val driver = {
-    val d = new SharkDriver(conf.asInstanceOf[HiveConf])
+    //val d = new SharkDriver(conf.asInstanceOf[HiveConf])
+    val d = new StreamingDriver(conf.asInstanceOf[HiveConf])
     d.init()
     d
   }
@@ -185,6 +188,7 @@ class SharkServerHandler extends HiveServerHandler with LogHelper {
 
   override def execute(cmd: String) {
     SessionState.get()
+
     val cmd_trimmed = cmd.trim()
     val tokens = cmd_trimmed.split("\\s")
     val cmd_1 = cmd_trimmed.substring(tokens.apply(0).length()).trim()

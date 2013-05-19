@@ -20,6 +20,8 @@ package shark.memstore
 import spark.RDD
 import spark.storage.StorageLevel
 
+import shark.SharkEnv
+
 class CacheManager {
 
   private val _keyToRdd = new collection.mutable.HashMap[String, RDD[_]]()
@@ -28,7 +30,10 @@ class CacheManager {
 
   def put(key: String, rdd: RDD[_], storageLevel: StorageLevel) {
     _keyToRdd(key.toLowerCase) = rdd
-    rdd.persist(storageLevel)
+    val isFromTransformedStream = SharkEnv.streams.isIntermediateStream(key)
+
+    // TODO: tmp fix. remove when upgrading to Spark 0.8.0
+    if (!isFromTransformedStream) rdd.persist(storageLevel)
   }
 
   def get(key: String): Option[RDD[_]] = _keyToRdd.get(key.toLowerCase)

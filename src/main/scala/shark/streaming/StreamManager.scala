@@ -26,7 +26,8 @@ class StreamManager {
   private val _durationToSsc = new JavaHashMap[Duration, StreamingContext]()
   // TODO: this should only contain inputDStreams
   private val _streamToSsc = new JavaHashMap[DStream[_], StreamingContext]()
-  private val _intermediateStreams = new JavaHashSet[DStream[_]]()
+  private val _inputStreams = new JavaHashSet[String]()
+  private val _intermediateStreams = new JavaHashSet[String]()
   private val _startedSscs = new JavaHashSet[StreamingContext]()
 
   // For testing/debugging
@@ -57,7 +58,7 @@ class StreamManager {
       parent = parent.dependencies(0)
     }
 
-  	return ssc
+    return ssc
   }
 
   def getSscs: Seq[StreamingContext] = _durationToSsc.values.toSeq
@@ -80,20 +81,26 @@ class StreamManager {
 
   // TODO: better abstraction...TransformedDStreams are created in StreamingTask,
   // yet FileDStreams are created in StreamManager.
-  def putIntermediateStream(name: String, stream: DStream[_], parent: DStream[_]) {
-  	val ssc = _streamToSsc.get(parent)
-  	_keyToDStream.put(name, stream)
-  	_streamToSsc.put(stream, ssc)
-  	_intermediateStreams.add(stream)
+  def putIntermediateStream(key: String, stream: DStream[_], parent: DStream[_]) {
+    val ssc = _streamToSsc.get(parent)
+    val streamName = key.toLowerCase
+    _keyToDStream.put(streamName, stream)
+    _streamToSsc.put(stream, ssc)
+    _intermediateStreams.add(streamName)
   }
 
-  def isIntermediateStream(stream: DStream[_]) = _intermediateStreams.contains(stream)
+  def isIntermediateStream(key: String) = _intermediateStreams.contains(key.toLowerCase)
+
+  def isInputStream(key: String) = _inputStreams.contains(key.toLowerCase)
 
   def removeStream(key: String) {
-  	val stream = _keyToDStream.get(key)
-  	_streamToSsc.remove(stream)
-  	_keyToDStream.remove(key)
+    var streamName = key.toLowerCase
+    val stream = _keyToDStream.get(streamName)
+    _streamToSsc.remove(stream)
+    _keyToDStream.remove(streamName)
     _latestComputeTimes.remove(stream)
+    if (_inputStreams.contains(streamName)) _inputStreams.remove(streamName)
+    if (_intermediateStreams.contains(streamName)) _intermediateStreams.remove(streamName)
   }
 
   // TODO: move to SharkStreamingContext?
@@ -107,11 +114,11 @@ class StreamManager {
     }
     // Note: only support new hadoop.mapreduce API. Hive uses the old one (package hadoop.mapred).
     // should throw an exception.
-    // For some reason fileStream.map(_._2) results in Text objects with duplicate values...
-    val newStream = ssc.fileStream[LongWritable, Text, TextInputFormat](readDirectory)
-        .map(tup => new Text(tup._2))
+    val newStream = ssc.fileStream[LongWritable, Text, TextInputFormat](readDirectory).map(tup => new Text(tup._2))
     _streamToSsc.put(newStream, ssc)
-    _keyToDStream.put(name.toLowerCase, newStream)
+    val streamName = name.toLowerCase
+    _keyToDStream.put(streamName, newStream)
+    _inputStreams.add(streamName)
   }
 
   private def createNewSsc(batchDuration: Duration): StreamingContext = {

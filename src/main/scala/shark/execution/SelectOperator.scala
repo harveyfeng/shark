@@ -55,6 +55,7 @@ class SelectOperator extends UnaryOperator[HiveSelectOperator] {
         var i = 0
         while (i < evals.length) {
           reusedRow(i) = evals(i).evaluate(row)
+          val debug = reusedRow(i)
           i += 1
         }
         reusedRow

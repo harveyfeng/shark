@@ -10,12 +10,16 @@ import org.apache.hadoop.hive.ql.plan.api.StageType
 import org.apache.hadoop.hive.ql.QueryPlan;
 import org.apache.hadoop.hive.ql.session.SessionState
 
-import shark.execution.{SparkTask, TableScanOperator, TableRDD}
+import shark.execution._
+import shark.execution.serialization._
 import shark.{LogHelper, SharkEnv}
 
 import spark.RDD
+import spark.storage.StorageLevel
 import spark.streaming.{Duration, DStream, StreamingContext, Time}
 
+
+trait StreamingTask extends java.io.Serializable
 
 class StreamingLaunchWork(val ssc: StreamingContext) extends java.io.Serializable
 
@@ -25,7 +29,7 @@ class StreamingLaunchWork(val ssc: StreamingContext) extends java.io.Serializabl
  * TODO: use TaskContext.executeOnCompleteCallbacks()?
  */
 class StreamingLaunchTask extends org.apache.hadoop.hive.ql.exec.Task[StreamingLaunchWork]
-  with java.io.Serializable with LogHelper {
+  with LogHelper {
 
   override def execute(driverContext: DriverContext): Int = {
     logInfo("Executing " + this.getClass.getName)
@@ -51,7 +55,7 @@ class CQWork(
 
 
 class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
-  with java.io.Serializable with LogHelper {
+  with LogHelper {
 
   var isInitialized = false
 
@@ -70,28 +74,35 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
     val terminalOp = sparkTask.getWork.terminalOperator
     val tableScanOps = terminalOp.returnTopOperators().asInstanceOf[Seq[TableScanOperator]]
 
+    Operator.hconf = conf
+    sparkTask.initializeTableScanTableDesc(tableScanOps)
+    sparkTask.initializeAllHiveOperators(terminalOp)
+
     for (streamScanOp <- cmdContext.streamOps) {
       streamScanOp.initializeInputStream()
     }
 
     // If the executor needs a window...
-    val executor = getExecutor(cmdContext.streamOps, cmdContext.duration)
+    //val executor = getExecutor(cmdContext.streamOps, cmdContext.duration)
+    val executor = work.executor
 
     val cq = (rdd: RDD[_], time: Time) => {
       for (streamScanOp <- cmdContext.streamOps) {
-        streamScanOp.currentComputeTime = time
+        streamScanOp.currentComputeTime = time.milliseconds
+        streamScanOp.inputRdd = rdd
       }
-      var tableRdd: TableRDD = null
+
+      var retRdd: RDD[Any] = null
       // Execute main query.
       if (isInitialized) {
         // Initialize tableScanDesc every time because it sets
         // table partition metadata.
         sparkTask.initializeTableScanTableDesc(tableScanOps)
-        val sinkRdd = terminalOp.execute().asInstanceOf[RDD[Any]]
-        tableRdd = new TableRDD(sinkRdd, sparkTask.getWork.resultSchema, terminalOp.objectInspector)
+        retRdd = terminalOp.execute().asInstanceOf[RDD[Any]]
+        //tableRdd = new TableRDD(sinkRdd, sparkTask.getWork.resultSchema, terminalOp.objectInspector)
       } else {
         sparkTask.executeTask()
-        tableRdd = sparkTask.tableRdd
+        retRdd = sparkTask.tableRdd.prev
 
         isInitialized = true
       }
@@ -100,12 +111,13 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
         childTask.executeTask()
       }
 
-      tableRdd.prev
+      retRdd
     }
 
     if (cmdContext.isDerivedStream) {
-      val transformed = executor.transform(cq)
+      val transformed = executor.transform(cq).persist(StorageLevel.MEMORY_ONLY)
       SharkEnv.streams.putIntermediateStream(cmdContext.tableName, transformed, executor)
+      transformed.foreach(_ => Unit)
     } else if (cmdContext.isArchiveStream) {
       executor.foreach((rdd, time) => cq(rdd, time))
     }

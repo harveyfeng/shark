@@ -182,7 +182,10 @@ class TableScanOperator extends TopOperator[HiveTableScanOperator] with HiveTopO
     iter.map { value =>
       value match {
         case rowWithPart: Array[Object] => rowWithPart
-        case v: Writable => deserializer.deserialize(v)
+        case v: Writable => {
+          val deser = deserializer.deserialize(v)
+          deser
+        }
       }
     }
   }
