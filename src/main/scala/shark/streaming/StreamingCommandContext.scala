@@ -6,10 +6,10 @@ import scala.collection.mutable.ArrayBuffer
 
 import org.apache.hadoop.conf.Configuration
 
-import shark.execution.SparkTask
+import shark.execution.{SparkTask, TableScanOperator}
 import shark.parse.QueryContext
 
-import spark.streaming.{Duration}
+import spark.streaming.{DStream, Duration}
 
 /**
  * Some metadata needed to drive continuous query execution.
@@ -24,6 +24,9 @@ class StreamingCommandContext(
 	var isDerivedStream: Boolean = _
 	var isArchiveStream: Boolean = _
 
+	// User-specified READ DIRECTORY for CREATE STREAM
+	var readDirectory: String = _
+
 	// User-specified BATCH.
 	// Note: only used for archiving right now.
 	var duration: Duration = _
@@ -32,6 +35,10 @@ class StreamingCommandContext(
 	// This is just for convenience for now.
 	var tableName: String =_
 	// Window specification for each DStream source.
-	val streamToWindow = new JavaHashMap[String, Duration]()
+	val keyToWindow = new JavaHashMap[String, (Duration, Boolean)]()
+	val streamToWindow = new JavaHashMap[DStream[_], (Duration, Boolean)]()
 	val streamOps = new ArrayBuffer[StreamScanOperator]()
+
+	// For derived streams on windowed derived streams
+	val tableScanOps = new ArrayBuffer[TableScanOperator]()
 }

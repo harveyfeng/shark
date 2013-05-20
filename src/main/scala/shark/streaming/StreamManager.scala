@@ -93,6 +93,8 @@ class StreamManager {
 
   def isInputStream(key: String) = _inputStreams.contains(key.toLowerCase)
 
+  def isStream(key: String) = _keyToDStream.contains(key.toLowerCase)
+
   def removeStream(key: String) {
     var streamName = key.toLowerCase
     val stream = _keyToDStream.get(streamName)

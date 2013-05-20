@@ -21,7 +21,7 @@ import org.apache.hadoop.io.{Text, Writable}
 
 import shark.{SharkConfVars, SharkEnv}
 import shark.execution.serialization.XmlSerializer
-import shark.execution.{Operator, TableScanOperator}
+import shark.execution.{Operator, SelectOperator, TableScanOperator}
 import shark.memstore.{TableStats, TableStorage}
 import spark.RDD
 import spark.rdd.{PartitionPruningRDD, UnionRDD}
@@ -37,7 +37,7 @@ import spark.streaming.{DStream, Duration, Interval, Time}
  */
 class StreamScanOperator extends TableScanOperator {
 
-  @BeanProperty var tableName: String = _
+  //@BeanProperty var tableName: String = _
 
   // TODO: figure out which vars actually need @BeanProperty.
   // Time at which the DStream generates an RDD for the table being
@@ -62,6 +62,11 @@ class StreamScanOperator extends TableScanOperator {
     // starts.
     inputDStream = SharkEnv.streams.getStream(tableName)
 
+    // for debugging
+    val childOp = this.childOperators(0)
+    if (childOp.isInstanceOf[SelectOperator]) {
+      childOp.asInstanceOf[SelectOperator].name = tableName
+    }
     // Sanity check
     assert(inputDStream != null)
   }

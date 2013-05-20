@@ -59,34 +59,11 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
       context.setCmd(command)
       context.setTryCount(getTryCount())
 
-      // TODO: remove after parsing works.
-      // If this is archiving a stream, INSERT INTO TABLE ... SELECT ... FROM ... EVERY ... SECONDS
+
       val cmdContext = context.asInstanceOf[StreamingCommandContext]
-      if (command.toLowerCase.contains("every")) {
-        // Get the duration (BATCH/EVERY x SECONDS ... )
-        val openQuoteIndex = command.indexOf("'")
-        val closeQuoteIndex = command.indexOf("'", openQuoteIndex + 1)
-        val batchDuration = command.substring(openQuoteIndex + 1, closeQuoteIndex).trim
-        // Just use seconds for now
-        val batchDurationSeconds = (batchDuration.split(' ')(0).toLong) * 1000
-        cmdContext.duration = Duration(batchDurationSeconds)
 
-        // Cut off the EVERY part.
-        command = command.substring(closeQuoteIndex + 1, command.length)
+      command = StreamingDriver.preprocessCommand(command, cmdContext)
 
-        // In StreamingSemanticAnalyzer, get the window specs for each source table
-      }
-      // If this is a stream creation, CREATE STREAM <schema> TBLPROPERTIES("batch"=<...>, "path"=<...>);
-      if (command.toLowerCase.contains("create stream")) {
-        command = command.replaceFirst("stream", "table")
-        cmdContext.isCreateStream = true
-        if (command.toLowerCase.contains("as select")) {
-          val splitIndex = command.indexOf("as select")
-          command = command.substring(0, splitIndex) +
-            "TBLPROPERTIES('shark.cache'='true', 'shark.cache.storageLevel'='MEMORY_ONLY') " +
-            command.substring(splitIndex, command.length)
-        }
-      }
       context.setCmd(command)
 
       val tree = ParseUtils.findRootNonNullToken((new ParseDriver()).parse(command, context))
@@ -164,3 +141,90 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
     }
   }
 }
+
+
+object StreamingDriver {
+
+  def preprocessCommand(cmd: String, cmdContext: StreamingCommandContext): String = {
+    var command = cmd
+
+    // TODO: remove after parsing works.
+
+
+    // If this is archiving a stream, INSERT INTO TABLE ... SELECT ... FROM ... BATCH ... SECONDS
+    if (command.toLowerCase.contains("insert into") &&
+        command.toLowerCase.contains("batch") &&
+        command.toLowerCase.contains("seconds")) {
+      // Get the duration (BATCH/EVERY x SECONDS ... )
+      val batchIndex = command.indexOf("batch")
+      val batchSubstring = command.substring(batchIndex, command.length)
+      val openQuoteIndex = batchSubstring.indexOf("'")
+      val closeQuoteIndex = batchSubstring.indexOf("'", openQuoteIndex + 1)
+      val batchDuration = batchSubstring.substring(openQuoteIndex + 1, closeQuoteIndex).trim
+      // Just use seconds for now
+      val batchDurationSeconds = (batchDuration.split(' ')(0).toLong) * 1000
+      cmdContext.duration = Duration(batchDurationSeconds)
+
+      // Cut off the BATCH part.
+      command = command.substring(0, batchIndex)
+
+      cmdContext.isArchiveStream = true
+
+      // In StreamingSemanticAnalyzer, get the window specs for each source table
+    }
+
+    // If this is a stream creation, CREATE STREAM <schema> TBLPROPERTIES("batch"=<...>, "path"=<...>);
+    // NEW: DERIVE STREAM [IF NOT EXISTS] stream AS SELECT ... [BATCH interval]
+    if (command.toLowerCase.contains("derive stream") || command.toLowerCase.contains("create stream") ) {
+      // Rewrite using CREATE TABLE
+      command = "create table " + command.substring(14, command.length)
+      cmdContext.isCreateStream = true
+
+      // BATCH interval
+      // Get the duration (BATCH/EVERY x SECONDS ... )
+      val batchIndex = command.indexOf("batch")
+      val batchSubstring = command.substring(batchIndex, command.length)
+      val openQuoteIndex = batchSubstring.indexOf("'")
+      val closeQuoteIndex = batchSubstring.indexOf("'", openQuoteIndex + 1)
+      val batchDuration = batchSubstring.substring(openQuoteIndex + 1, closeQuoteIndex).trim
+      // Just use seconds for now
+      val batchDurationSeconds = (batchDuration.split(' ')(0).toLong) * 1000
+      cmdContext.duration = Duration(batchDurationSeconds)
+
+      // Cut off the BATCH part.
+      command = command.substring(0, batchIndex)
+
+      // If it has a READ DIRECTORY dir_name
+      if (command.contains("read directory")) {
+        if (batchSubstring == "") {
+          throw new SemanticException("Must include BATCH interval in CREATE STREAM")
+        }
+        val readDirIndex = command.indexOf("as read directory")
+        val readDirSubstring = command.substring(readDirIndex, command.length)
+        val openQuoteIndex = readDirSubstring.indexOf("'")
+        val closeQuoteIndex = readDirSubstring.indexOf("'", openQuoteIndex + 1)
+
+        val readDirectoryStr = readDirSubstring.substring(openQuoteIndex + 1, closeQuoteIndex).trim
+        cmdContext.readDirectory = readDirectoryStr
+
+        // Cut off the READ DIRECTORY part
+        command = command.substring(0, readDirIndex)
+      }
+
+      // For derived streams
+      if (command.toLowerCase.contains("as select")) {
+        val splitIndex = command.indexOf("as select")
+        command = command.substring(0, splitIndex) +
+          " ROW FORMAT SERDE 'shark.memstore.ColumnarSerDe$WithStats' " +
+          " TBLPROPERTIES('shark.cache'='true', 'shark.cache.storageLevel'='MEMORY_ONLY') " +
+          command.substring(splitIndex, command.length)
+      }
+    }
+    return command
+  }
+
+}
+
+
+
+

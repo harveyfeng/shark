@@ -77,7 +77,7 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
           super.analyzeInternal(ast)
           // SemanticAnalyzer's td is null. Get it from DDLWork.
           val td = rootTasks.head.getWork.asInstanceOf[DDLWork].getCreateTblDesc
-          analyzeCreateStream(td)
+          analyzeCreateStream(td, cmdContext)
           return
         }
       } else {
@@ -96,7 +96,7 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
     pctx = getParseContext()
 
     // Is there a stream source?
-    if (cmdContext.streamToWindow.size == 0) {
+    if (cmdContext.keyToWindow.size == 0) {
       if (cmdContext.isCreateStream && isCTAS) {
         throw new SemanticException(
           "Must include at least one stream source for creating a derived stream")
@@ -125,16 +125,8 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
         // TODO: pass this through cmdContext at parsing stage.
         val tblProps = td.getTblProps
         // Seconds
-        val durationStr = tblProps.get("batch")
-        if (durationStr != null) {
-          cmdContext.duration = Duration(durationStr.toLong * 1000)
-        }
-        cmdContext.isDerivedStream = true
-      }
 
-      // TODO: isArchiveStream should be set during AST traversal.
-      if (pctx.getQB.getParseInfo.isInsertToTable && !qb.isCTAS) {
-        cmdContext.isArchiveStream = true
+        cmdContext.isDerivedStream = true
       }
 
       val inputStreams = StreamingOperatorFactory.createStreamingTreeFromSharkTree(
@@ -158,15 +150,14 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
   }
 
   // Create input stream for given table.
-  def analyzeCreateStream(td: CreateTableDesc) {
+  def analyzeCreateStream(td: CreateTableDesc, cmdContext: StreamingCommandContext) {
     val tblProps = td.getTblProps()
-    val batchDuration = tblProps.getOrElse("batch", "1").toLong
-    val readDirectory = tblProps.get("path")
 
     // Stream name
     val tableName = td.getTableName
     // Use seconds for now
-    val duration = Duration(batchDuration * 1000)
+    val duration = cmdContext.duration
+    val readDirectory = cmdContext.readDirectory
 
     if (td.getInputFormat.isInstanceOf[org.apache.hadoop.mapred.TextInputFormat]) {
       throw new SemanticException(
@@ -180,7 +171,7 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
   // with the StreamingContext.
   def genStreamingTask(
       cmdContext: StreamingCommandContext,
-      sourceDStreams: Seq[DStream[_]],
+      sourceDStreams: Seq[DStream[Any]],
       sparkTask: SparkTask
     ) {
 
@@ -188,7 +179,7 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
 
     val streams = SharkEnv.streams
 
-    val executor = getExecutor(sourceDStreams, cmdContext.duration)
+    val executor = getExecutor(sourceDStreams, cmdContext)
     // Create the CQTask
     val cqTask = TaskFactory.get(new CQWork(cmdContext, sparkTask, executor), conf)
 
@@ -206,38 +197,30 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
       val createTblDesc = createTblTask.getWork.asInstanceOf[DDLWork].getCreateTblDesc
 
       // SerDe is the same as that used by cached tables.
-      createTblDesc.setSerName(classOf[ColumnarSerDe.Basic].getName)
+      createTblDesc.setSerName(classOf[ColumnarSerDe.WithStats].getName)
 
-    } else if (cmdContext.isArchiveStream) {
-      // If the StreamingContext used for this executor DStream hasn't been started, add a
-      // StreamingLaunchTask as a dependency to the CQTask, which adds an output DStream (foreach).
-      if (!SharkEnv.streams.hasSscStarted(executor)) {
-        val ssc = SharkEnv.streams.getSsc(executor)
-        val launchTask = TaskFactory.get(
-            new StreamingLaunchWork(SharkEnv.streams.getSsc(executor)), conf)
-
-        if (ssc == null) {
-          assert(ssc != null)
-        }
-
-        SharkEnv.streams.addStartedSsc(ssc)
-        cqTask.addDependentTask(launchTask)
-      }
     }
-
     rootTasks.add(cqTask)
   }
 
-  def getExecutor(sourceDStreams: Seq[DStream[_]], duration: Duration): DStream[_] = {
+  def getExecutor(sourceDStreams: Seq[DStream[Any]], cmdContext: StreamingCommandContext): DStream[Any] = {
     // Use the DStream with smallest slideDuration.
-    val sourceDStream = sourceDStreams.sortWith(_.slideDuration < _.slideDuration).head
-    // If the user provides a batch duration and there are > 1 sources, trust that
+    var executor = sourceDStreams.sortWith(_.slideDuration < _.slideDuration).head
+    // If the user provides a batch duration from tblProps, and there are > 1 sources, trust that
     // it will be a valid duration (for now)
-    if (duration == null) {
-      return sourceDStream
+    val batchDuration = cmdContext.duration
+
+    // If there is a window on the source stream, take the window, and add a
+    // transformedDStream that will update the CacheManager with UnionRDDs that have stats.
+    // Note: this should always be true. Default window duration will be batch duration of parent stream.
+    val (windowDuration, hasUserSpecWindow) = cmdContext.streamToWindow.get(executor)
+    executor =
+    if (batchDuration == null) {
+      executor.window(windowDuration)
     } else {
-      sourceDStream.window(duration, duration)
+      executor.window(windowDuration, batchDuration)
     }
+    return executor
   }
 }
 

@@ -67,7 +67,7 @@ object StreamingOperatorFactory {
     topOps: Seq[Operator[_]],
     cmdContext: StreamingCommandContext,
     pctx: ParseContext
-  ): Seq[DStream[_]] = {
+  ): Seq[DStream[Any]] = {
     // If the any TableScanOperator is for a DStream input source,
     // replace it with StreamScanOperator.
     val topToTable = pctx.getTopToTable
@@ -75,26 +75,35 @@ object StreamingOperatorFactory {
 
     for (topOp <- topOps) {
       val tableName = topToTable.get(topOp.hiveOp).getTableName
-      SharkEnv.streams.getStream(tableName) match {
-        case stream: DStream[_] => {
-          if (SharkEnv.streams.isInputStream(tableName)) {
-            val streamScanOp = convertTableScanToStreamScan(
-              topOp.asInstanceOf[TableScanOperator])
-  
-            // Do some StreamScanOp initialization...move to CQTask?
-            streamScanOp.tableName = tableName
-            streamScanOp.windowDuration = cmdContext.streamToWindow.get(tableName)
-  
-            // TODO: should we set source stream for each StreamScanOp here?
-            //       Depends on whether streams are immutable...
-            cmdContext.streamOps.append(streamScanOp)
+      if (SharkEnv.streams.isStream(tableName)) {
+        SharkEnv.streams.getStream(tableName) match {
+          case stream: DStream[_] => {
+            if (SharkEnv.streams.isInputStream(tableName)) {
+              val streamScanOp = convertTableScanToStreamScan(
+                topOp.asInstanceOf[TableScanOperator])
+
+              // Do some StreamScanOp initialization...move to CQTask?
+              streamScanOp.tableName = tableName
+              streamScanOp.windowDuration = cmdContext.keyToWindow.get(tableName)._1
+
+              // TODO: should we set source stream for each StreamScanOp here?
+              //       Depends on whether streams are immutable...
+              cmdContext.streamOps.append(streamScanOp)
+            } else if (SharkEnv.streams.isIntermediateStream(tableName)) {
+              // TODO: make a "WindowScanOperator"?
+              val hasUserSpecWindow = cmdContext.keyToWindow.get(tableName)._2
+              if (hasUserSpecWindow) {
+                cmdContext.tableScanOps.append(topOp.asInstanceOf[TableScanOperator])
+              }
+            }
+            inputStreams.append(stream)
           }
-          inputStreams.append(stream)
         }
       }
+      topOp.asInstanceOf[shark.execution.TopOperator[_]].tableName = tableName
     }
 
-    return inputStreams.toSeq
+    return inputStreams.toSeq.asInstanceOf[Seq[DStream[Any]]]
   }
 
 	

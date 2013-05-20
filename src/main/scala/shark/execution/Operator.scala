@@ -195,7 +195,9 @@ abstract class UnaryOperator[T <: HiveOperator] extends Operator[T] {
 }
 
 
-abstract class TopOperator[T <: HiveOperator] extends UnaryOperator[T]
+abstract class TopOperator[T <: HiveOperator] extends UnaryOperator[T] {
+  @transient var tableName: String = _
+}
 
 
 object Operator extends LogHelper {

@@ -92,20 +92,24 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
         streamScanOp.inputRdd = rdd
       }
 
-      var retRdd: RDD[Any] = null
-      // Execute main query.
-      if (isInitialized) {
-        // Initialize tableScanDesc every time because it sets
-        // table partition metadata.
-        sparkTask.initializeTableScanTableDesc(tableScanOps)
-        retRdd = terminalOp.execute().asInstanceOf[RDD[Any]]
-        //tableRdd = new TableRDD(sinkRdd, sparkTask.getWork.resultSchema, terminalOp.objectInspector)
-      } else {
-        sparkTask.executeTask()
-        retRdd = sparkTask.tableRdd.prev
-
-        isInitialized = true
+      for (tableScanOp <- cmdContext.tableScanOps) {
+        tableScanOp.inputUnionRdd = rdd
       }
+
+      var retRdd: RDD[Any] =
+        // Execute main query.
+        if (isInitialized) {
+          // Initialize tableScanDesc every time because it sets
+          // table partition metadata.
+          sparkTask.initializeTableScanTableDesc(tableScanOps)
+          terminalOp.execute().asInstanceOf[RDD[Any]]
+          //tableRdd = new TableRDD(sinkRdd, sparkTask.getWork.resultSchema, terminalOp.objectInspector)
+        } else {
+          sparkTask.executeTask()
+          isInitialized = true
+          sparkTask.tableRdd.prev
+        }
+
       // Execute dependencies
       for (childTask <- sparkTask.getChildTasks) {
         childTask.executeTask()
@@ -119,6 +123,7 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
       SharkEnv.streams.putIntermediateStream(cmdContext.tableName, transformed, executor)
       transformed.foreach(_ => Unit)
     } else if (cmdContext.isArchiveStream) {
+      val tmp = 0
       executor.foreach((rdd, time) => cq(rdd, time))
     }
     0

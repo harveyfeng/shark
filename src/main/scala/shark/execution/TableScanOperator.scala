@@ -46,6 +46,8 @@ class TableScanOperator extends TopOperator[HiveTableScanOperator] with HiveTopO
 
   @transient var table: Table = _
 
+  @transient var inputUnionRdd: RDD[_] = _
+
   @transient var parts: Array[Object] = _
   @BeanProperty var firstConfPartDesc: PartitionDesc  = _
   @BeanProperty var tableDesc: TableDesc = _
@@ -93,6 +95,12 @@ class TableScanOperator extends TopOperator[HiveTableScanOperator] with HiveTopO
 
   override def initializeOnMaster() {
     localHconf = super.hconf
+
+    // For debugging
+    val childOp = this.childOperators(0)
+    if (childOp.isInstanceOf[SelectOperator]) {
+      childOp.asInstanceOf[SelectOperator].name = tableName
+    }
   }
 
   override def execute(): RDD[_] = {
@@ -118,7 +126,8 @@ class TableScanOperator extends TopOperator[HiveTableScanOperator] with HiveTopO
     // the input table and we have statistics on the table.
     val prunedRdd: RDD[_] =
       if (SharkConfVars.getBoolVar(localHconf, SharkConfVars.MAP_PRUNING) &&
-          childOperators(0).isInstanceOf[FilterOperator] && splitToStats.size > 0) {
+          childOperators(0).isInstanceOf[FilterOperator] &&
+          splitToStats.size > 0 &&splitToStats.size == rdd.partitions.size) {
 
         val startTime = System.currentTimeMillis
         val printPruneDebug = SharkConfVars.getBoolVar(

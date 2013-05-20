@@ -195,48 +195,84 @@ object SharkCliDriver {
 
     // =======================================
     // for debugging
+    val twitter = "drop table if exists src_stream;" +
+      "drop table if exists src2_stream;" +
+      "drop table if exists src_archive;" +
+      //"create stream src_stream(user string, lang string, country string, text string, retweets int, computeTime bigint) " +
+      //    "tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/user-lang-country-text-retweets.txt');" +
+      "create stream src_stream(user string, lang string, country string, text string, retweets int, computeTime bigint) " +
+        "as read directory '/Users/harveyfeng/testing/test/user-lang-country-text-retweets.txt' batch '4 seconds' ;" +
+      "create table src_archive(user string, lang string, country string, text string, retweets int, computeTime bigint);" +
+      "insert into table src_archive select * from src_stream window_4 batch '4 seconds';" +
+      "start;"
+
     val lines2 = "drop table if exists src_stream;" +
       "drop table if exists src2_stream;" +
       "drop table if exists src_archive;" +
-      "create stream src_stream(key string, value string, time bigint) tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/kv1.txt');" +
-      "create stream src2_stream as select * from src_stream window_4;" +
-      "create table src_archive(key string, value string, time bigint);" +
-      "every '4 seconds' insert into table src_archive select * from src2_stream window_4;"
+      "create stream src_stream(key int, value string, time bigint) tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/kv1.txt');" +
+      "create stream src2_stream as select * from src_stream window_8;" +
+      "create table src_archive(key int, value string, time bigint);" +
+      "every '4 seconds' insert into table src_archive select * from src2_stream window_8;" +
+      "start;"
+
+    val lines3 = "drop table if exists src_stream;" +
+      "drop table if exists src2_stream;" +
+      "drop table if exists src_archive;" +
+      "drop table if exists src_historical;" +
+      "create table src_historical(key int, value string); " +
+      "load data local inpath '/Users/harveyfeng/hive09/data/files/kv1.txt' into table src_historical; " +
+      "create stream src_stream(key int, value string, time bigint) tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/kv1.txt');" +
+      "create stream src2_stream as select sh.key k, sh.value v, window_4.key k2, window_4.value v2 from src_stream window_4 join src_historical sh on sh.key=window_4.key;" +
+      "create table src_archive(key int, value string, key2 int, value2 string);" +
+      "every '4 seconds' insert into table src_archive select * from src2_stream window_4;" +
+      "start;"
 
     val lines = "drop table if exists src_stream;" +
       "drop table if exists src2_stream;" +
       "drop table if exists src_archive;" +
       "create stream src_stream(key int, value string, time bigint) tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/kv1.txt');" +
       "create table src_archive(key int, value string, time bigint);" +
-      "every '4 seconds' insert into table src_archive select * from src_stream window_4;"
+      "every '4 seconds' insert into table src_archive select * from src_stream window_4;" +
+      "start;"
 
     // =======================================
 
     while (line != null) {
+      if (line.contains("ttest")) {
+        for (linecmd <- twitter.split(";")) {
+          ret = cli.processLine(linecmd)
+        }
+        line = reader.readLine(curPrompt + "> ")
+      }
       if (line.contains("restart")) {
         SharkEnv.streams.getSscs.foreach(_.start())
         line = reader.readLine(curPrompt + "> ")
       }
-      if (line.contains("start2")) {
+      if (line.contains("test3")) {
+        for (linecmd <- lines3.split(";")) {
+          ret = cli.processLine(linecmd)
+        }
+        line = reader.readLine(curPrompt + "> ")
+      }
+      if (line.contains("test2")) {
         for (linecmd <- lines2.split(";")) {
           ret = cli.processLine(linecmd)
         }
         line = reader.readLine(curPrompt + "> ")
       }
-      if (line.contains("start")) {
+      if (line.contains("test")) {
         for (linecmd <- lines.split(";")) {
           ret = cli.processLine(linecmd)
         }
         line = reader.readLine(curPrompt + "> ")
       }
-      if (line.contains("stop")) {
-        SharkEnv.streams.getSscs.foreach(_.stop())
-        line = reader.readLine(curPrompt + "> ")
-      }
+
       if (line.contains("check streams")) {
         val streamManager = SharkEnv.streams
+        val cacheManager = SharkEnv.cache
         line = reader.readLine(curPrompt + "> ")
       }
+
       if (!prefix.equals("")) {
         prefix += '\n'
       }
@@ -296,6 +332,39 @@ class SharkCliDriver(loadRdds: Boolean = false) extends CliDriver with LogHelper
     val tokens: Array[String] = cmd_trimmed.split("\\s+")
     val cmd_1: String = cmd_trimmed.substring(tokens(0).length()).trim()
     var ret = 0
+
+    if (cmd_trimmed.toLowerCase.equals("start")) {
+      SharkEnv.streams.getSscs.foreach(_.start())
+      val out = ss.out
+      out.println("=============")
+      out.println("Starting SSC")
+      out.println("=============")
+      return 0
+    } else if (cmd_trimmed.toLowerCase.equals("stop")) {
+      SharkEnv.streams.getSscs.foreach(_.stop())
+      val out = ss.out
+      out.println("=============")
+      out.println("Stopping SSC")
+      out.println("=============")
+      return 0
+    }
+
+    // Note vvv that might have to go in StreamingSemanticAnalyzer
+    /*
+    // If the StreamingContext used for this executor DStream hasn't been started, add a
+    // StreamingLaunchTask as a dependency to the CQTask, which adds an output DStream (foreach).
+    if (!SharkEnv.streams.hasSscStarted(executor)) {
+        val ssc = SharkEnv.streams.getSsc(executor)
+        val launchTask = TaskFactory.get(
+            new StreamingLaunchWork(SharkEnv.streams.getSsc(executor)), conf)
+
+          assert(ssc != null)
+
+        SharkEnv.streams.addStartedSsc(ssc)
+        cqTask.addDependentTask(launchTask)
+      }
+    */
+
     if (cmd_trimmed.toLowerCase().equals("quit") ||
       cmd_trimmed.toLowerCase().equals("exit") ||
       tokens(0).equalsIgnoreCase("source") ||

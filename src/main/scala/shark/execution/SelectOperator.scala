@@ -33,7 +33,10 @@ class SelectOperator extends UnaryOperator[HiveSelectOperator] {
 
   @BeanProperty var conf: SelectDesc = _
 
-  @transient var evals: Array[ExprNodeEvaluator] = _
+  @BeanProperty var evals: Array[ExprNodeEvaluator] = _
+
+  // Debugging
+  @transient var name: String = _
 
   override def initializeOnMaster() {
     conf = hiveOp.getConf()
