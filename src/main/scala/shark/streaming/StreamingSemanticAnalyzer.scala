@@ -158,6 +158,12 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
           cmdContext,
           pctx)
 
+      // Note: only one input stream right now
+      val is = inputStreams(0)
+      if (SharkEnv.streams.hasSscStarted(is)) {
+        return
+      }
+
       genStreamingTask(cmdContext, inputStreams, sparkTasks.head)
 
     } else {
@@ -247,10 +253,3 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
     return executor
   }
 }
-
-object StreamingSemanticAnalyzer {
-  val addDefaultTblPropsMethod = classOf[SemanticAnalyzer].getDeclaredMethod(
-    "addDefaultProperties", classOf[BaseSemanticAnalyzer])
-  addDefaultTblPropsMethod.setAccessible(true)
-}
-

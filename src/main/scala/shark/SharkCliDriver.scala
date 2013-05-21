@@ -198,8 +198,6 @@ object SharkCliDriver {
     val twitter = "drop table if exists src_stream;" +
       "drop table if exists src2_stream;" +
       "drop table if exists src_archive;" +
-      //"create stream src_stream(user string, lang string, country string, text string, retweets int, computeTime bigint) " +
-      //    "tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/user-lang-country-text-retweets.txt');" +
       "create stream src_stream(user string, lang string, country string, text string, retweets int, computeTime bigint) " +
         "as read directory '/Users/harveyfeng/testing/test/user-lang-country-text-retweets.txt' batch '4 seconds' ;" +
       "create table src_archive(user string, lang string, country string, text string, retweets int, computeTime bigint);" +
@@ -228,14 +226,6 @@ object SharkCliDriver {
       "insert into table src_archive select * from last '4 seconds' of src2_stream batch '4 seconds';" +
       "start;"
 
-    val lines = "drop table if exists src_stream;" +
-      "drop table if exists src2_stream;" +
-      "drop table if exists src_archive;" +
-      "create stream src_stream(key int, value string, time bigint) tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/kv1.txt');" +
-      "create table src_archive(key int, value string, time bigint);" +
-      "every '4 seconds' insert into table src_archive select * from src_stream window_4;" +
-      "start;"
-
     // =======================================
 
     while (line != null) {
@@ -261,13 +251,6 @@ object SharkCliDriver {
         }
         line = reader.readLine(curPrompt + "> ")
       }
-      if (line.contains("test1")) {
-        for (linecmd <- lines.split(";")) {
-          ret = cli.processLine(linecmd)
-        }
-        line = reader.readLine(curPrompt + "> ")
-      }
-
       if (line.contains("check streams")) {
         val streamManager = SharkEnv.streams
         val cacheManager = SharkEnv.cache

@@ -34,7 +34,12 @@ class StreamingLaunchTask extends org.apache.hadoop.hive.ql.exec.Task[StreamingL
   override def execute(driverContext: DriverContext): Int = {
     logInfo("Executing " + this.getClass.getName)
 
-    if (work.shouldStart) work.ssc.start else work.ssc.stop
+    if (work.shouldStart) {
+      work.ssc.start
+      SharkEnv.streams.addStartedSsc(work.ssc)
+    } else {
+      work.ssc.stop
+    }
 
     0
   }
