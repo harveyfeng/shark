@@ -21,7 +21,7 @@ import spark.streaming.{Duration, DStream, StreamingContext, Time}
 
 trait StreamingTask extends java.io.Serializable
 
-class StreamingLaunchWork(val ssc: StreamingContext) extends java.io.Serializable
+class StreamingLaunchWork(val ssc: StreamingContext, val shouldStart: Boolean) extends java.io.Serializable
 
 /**
  * StreamingLaunchTask starts the StreamingContext.
@@ -34,7 +34,7 @@ class StreamingLaunchTask extends org.apache.hadoop.hive.ql.exec.Task[StreamingL
   override def execute(driverContext: DriverContext): Int = {
     logInfo("Executing " + this.getClass.getName)
 
-    work.ssc.start()
+    if (work.shouldStart) work.ssc.start else work.ssc.stop
 
     0
   }

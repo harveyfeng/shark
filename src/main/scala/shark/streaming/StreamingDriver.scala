@@ -66,8 +66,14 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
 
       context.setCmd(command)
 
-      val tree = ParseUtils.findRootNonNullToken((new ParseDriver()).parse(command, context))
-      val sem = SharkSemanticAnalyzerFactory.get(conf, tree)
+      var tree: ASTNode = null
+      var sem: BaseSemanticAnalyzer = null
+      if (command.toLowerCase.startsWith("start") || command.toLowerCase.startsWith("stop")) {
+        sem = new StreamingSemanticAnalyzer(conf)
+      } else {
+        tree = ParseUtils.findRootNonNullToken((new ParseDriver()).parse(command, context))
+        sem = SharkSemanticAnalyzerFactory.get(conf, tree)
+      }
 
       // Do semantic analysis and plan generation
       val saHooks = SharkDriver.saHooksMethod.invoke(this, HiveConf.ConfVars.SEMANTIC_ANALYZER_HOOK,
@@ -144,6 +150,8 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
 
 
 object StreamingDriver {
+  import scala.util.matching.Regex
+  import scala.util.matching.Regex.Match
 
   def preprocessCommand(cmd: String, cmdContext: StreamingCommandContext): String = {
     var command = cmd
@@ -152,7 +160,7 @@ object StreamingDriver {
 
 
     // If this is archiving a stream, INSERT INTO TABLE ... SELECT ... FROM ... BATCH ... SECONDS
-    if (command.toLowerCase.contains("insert into") &&
+    if (command.toLowerCase.contains("insert") &&
         command.toLowerCase.contains("batch") &&
         command.toLowerCase.contains("seconds")) {
       // Get the duration (BATCH/EVERY x SECONDS ... )
@@ -182,11 +190,12 @@ object StreamingDriver {
 
       // BATCH interval
       // Get the duration (BATCH/EVERY x SECONDS ... )
-      val batchIndex = command.indexOf("batch")
+      val batchIndex = command.toLowerCase.indexOf("batch")
       val batchSubstring = command.substring(batchIndex, command.length)
       val openQuoteIndex = batchSubstring.indexOf("'")
       val closeQuoteIndex = batchSubstring.indexOf("'", openQuoteIndex + 1)
       val batchDuration = batchSubstring.substring(openQuoteIndex + 1, closeQuoteIndex).trim
+
       // Just use seconds for now
       val batchDurationSeconds = (batchDuration.split(' ')(0).toLong) * 1000
       cmdContext.duration = Duration(batchDurationSeconds)
@@ -195,11 +204,11 @@ object StreamingDriver {
       command = command.substring(0, batchIndex)
 
       // If it has a READ DIRECTORY dir_name
-      if (command.contains("read directory")) {
+      if (command.toLowerCase.contains("read directory")) {
         if (batchSubstring == "") {
           throw new SemanticException("Must include BATCH interval in CREATE STREAM")
         }
-        val readDirIndex = command.indexOf("as read directory")
+        val readDirIndex = command.toLowerCase.indexOf("as read directory")
         val readDirSubstring = command.substring(readDirIndex, command.length)
         val openQuoteIndex = readDirSubstring.indexOf("'")
         val closeQuoteIndex = readDirSubstring.indexOf("'", openQuoteIndex + 1)
@@ -213,13 +222,30 @@ object StreamingDriver {
 
       // For derived streams
       if (command.toLowerCase.contains("as select")) {
-        val splitIndex = command.indexOf("as select")
+        val splitIndex = command.toLowerCase.indexOf("as select")
         command = command.substring(0, splitIndex) +
           " ROW FORMAT SERDE 'shark.memstore.ColumnarSerDe$WithStats' " +
           " TBLPROPERTIES('shark.cache'='true', 'shark.cache.storageLevel'='MEMORY_ONLY') " +
           command.substring(splitIndex, command.length)
       }
     }
+
+    if (command.contains("last") && command.contains("seconds")) {
+      val regx = new Regex("""last +'([0-9a-zA-Z ]+)' +of +([a-zA-Z0-9\_]+)""", "window", "stream")
+      val tup = regx findFirstIn command match {
+        case Some(regx(window, stream)) => Some (window, stream)
+        case None => None
+      }
+      val (windowStr, name) = tup.get
+      val windowDuration = Duration(windowStr.split(' ')(0).toLong) * 1000
+      cmdContext.keyToWindow.put(name, (windowDuration, true))
+      val sourceStream = SharkEnv.streams.getStream(name)
+      cmdContext.streamToWindow.put(sourceStream, (windowDuration, true))
+      command = regx replaceAllIn ( command, (m: Match) =>
+        "%s" format (m group "stream")
+      )
+    }
+
     return command
   }
 

@@ -46,8 +46,8 @@ import spark.SparkContext
 
 object SharkCliDriver {
 
-  var prompt  = "shark"
-  var prompt2 = "     " // when ';' is not yet seen.
+  var prompt  = "streaming"
+  var prompt2 = "         " // when ';' is not yet seen.
   val streamingPrompt  = "streaming"
   val streamingPrompt2 = "         "
 
@@ -209,10 +209,11 @@ object SharkCliDriver {
     val lines2 = "drop table if exists src_stream;" +
       "drop table if exists src2_stream;" +
       "drop table if exists src_archive;" +
-      "create stream src_stream(key int, value string, time bigint) tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/kv1.txt');" +
-      "create stream src2_stream as select * from src_stream window_8;" +
+      "create stream src_stream(key int, value string, time bigint) " +
+        "as read directory '/Users/harveyfeng/testing/test/kv1.txt' batch '4 seconds';" +
+      "create stream src2_stream as select * from last '8 seconds' of src_stream batch '4 seconds';" +
       "create table src_archive(key int, value string, time bigint);" +
-      "every '4 seconds' insert into table src_archive select * from src2_stream window_8;" +
+      "insert into table src_archive select * from last '8 seconds' of src2_stream batch '4 seconds';" +
       "start;"
 
     val lines3 = "drop table if exists src_stream;" +
@@ -221,10 +222,10 @@ object SharkCliDriver {
       "drop table if exists src_historical;" +
       "create table src_historical(key int, value string); " +
       "load data local inpath '/Users/harveyfeng/hive09/data/files/kv1.txt' into table src_historical; " +
-      "create stream src_stream(key int, value string, time bigint) tblproperties ('batch'='4','path'='/Users/harveyfeng/testing/test/kv1.txt');" +
-      "create stream src2_stream as select sh.key k, sh.value v, window_4.key k2, window_4.value v2 from src_stream window_4 join src_historical sh on sh.key=window_4.key;" +
-      "create table src_archive(key int, value string, key2 int, value2 string);" +
-      "every '4 seconds' insert into table src_archive select * from src2_stream window_4;" +
+      "create stream src_stream(key int, value string, time bigint) as read directory '/Users/harveyfeng/testing/test/kv1.txt' batch '4 seconds';" +
+      "create stream src2_stream as select sh.key k, sh.value v, ss.key k2, ss.value, ss.time v2 from last '4 seconds' of src_stream ss join src_historical sh on sh.key=ss.key batch '4 seconds';" +
+      "create table src_archive(key int, value string, key2 int, value2 string, time bigint);" +
+      "insert into table src_archive select * from last '4 seconds' of src2_stream batch '4 seconds';" +
       "start;"
 
     val lines = "drop table if exists src_stream;" +
@@ -260,7 +261,7 @@ object SharkCliDriver {
         }
         line = reader.readLine(curPrompt + "> ")
       }
-      if (line.contains("test")) {
+      if (line.contains("test1")) {
         for (linecmd <- lines.split(";")) {
           ret = cli.processLine(linecmd)
         }
@@ -333,6 +334,7 @@ class SharkCliDriver(loadRdds: Boolean = false) extends CliDriver with LogHelper
     val cmd_1: String = cmd_trimmed.substring(tokens(0).length()).trim()
     var ret = 0
 
+    /*
     if (cmd_trimmed.toLowerCase.equals("start")) {
       SharkEnv.streams.getSscs.foreach(_.start())
       val out = ss.out
@@ -348,7 +350,7 @@ class SharkCliDriver(loadRdds: Boolean = false) extends CliDriver with LogHelper
       out.println("=============")
       return 0
     }
-
+     */
     // Note vvv that might have to go in StreamingSemanticAnalyzer
     /*
     // If the StreamingContext used for this executor DStream hasn't been started, add a

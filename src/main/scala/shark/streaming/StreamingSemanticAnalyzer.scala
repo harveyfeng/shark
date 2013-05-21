@@ -42,6 +42,30 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
     val cmdContext = pctx.getContext().asInstanceOf[StreamingCommandContext]
     var isCTAS = false
 
+    if (cmdContext.getCmd.trim.toLowerCase.equals("start")) {
+      // If the StreamingContext used for this executor DStream hasn't been started, add a
+      // StreamingLaunchTask as a dependency to the CQTask, which adds an output DStream (foreach).
+        val ssc = SharkEnv.streams.getSscs(0)
+        val launchTask = TaskFactory.get(
+          new StreamingLaunchWork(ssc, true), conf)
+
+        assert(ssc != null)
+
+        SharkEnv.streams.addStartedSsc(ssc)
+        rootTasks.add(launchTask)
+        return
+    } else if (cmdContext.getCmd.trim.toLowerCase.equals("stop")) {
+        val ssc = SharkEnv.streams.getSscs(0)
+        val launchTask = TaskFactory.get(
+          new StreamingLaunchWork(ssc, false), conf)
+
+        assert(ssc != null)
+
+        SharkEnv.streams.addStartedSsc(ssc)
+        rootTasks.add(launchTask)
+        return
+    }
+
     logInfo("Starting Shark Streaming Semantic Analysis")
 
     // if (ast.getToken().getType() == SharkParser.TOK_CREATESTREAM) isCreateStream = true

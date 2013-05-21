@@ -29,28 +29,19 @@ object ASTTraversal {
           // TODO: use TOK_WINDOW here once parser works.
           // Example for how it works right now:
           // FROM <tablename> window_<duration>
-          val windowString = "window_"
+          //val windowString = "window_"
           val aliasIndex = node.getChildren.size - 1
           val alias = node.getChild(aliasIndex).getText
           val tableName =
             BaseSemanticAnalyzer.getUnescapedName(node.getChild(0).asInstanceOf[ASTNode])
-          val streams = SharkEnv.streams
-          val c = context
           val stream = SharkEnv.streams.getStream(tableName)
           // If it isn't a stream, then we're likely joining with a historical table.
-          if (stream != null) {
+          // If this is a stream, and user hasn't provided window, default to parent Duration
+          if (stream != null && context.keyToWindow.contains(tableName)) {
             var duration = SharkEnv.streams.getStream(tableName).slideDuration
-            val hasUserSpecWindow = alias.contains(windowString)
-            if (hasUserSpecWindow) {
-              val startIndex = alias.lastIndexOf(windowString)
-              val windowDurationStr = alias.substring(startIndex + windowString.length , alias.length)
-              // Just use seconds for now
-              duration = Duration(windowDurationStr.toLong * 1000)
-            }
-
-            context.keyToWindow.put(tableName, (duration, hasUserSpecWindow))
+            context.keyToWindow.put(tableName, (duration, false))
             val sourceStream = SharkEnv.streams.getStream(tableName)
-            context.streamToWindow.put(sourceStream, (duration, hasUserSpecWindow))
+            context.streamToWindow.put(sourceStream, (duration, false))
           }
         }
         case _ => traverseChildren(node.getChildren)
