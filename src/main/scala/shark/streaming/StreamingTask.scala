@@ -73,6 +73,8 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
   }
 
   override def execute(driverContext: DriverContext): Int = {
+    logInfo("Executing " + this.getClass.getName)
+    logInfo("Executing task for command: " + work.cmdContext.getCmd)
     val cmdContext = work.cmdContext
     val sparkTask = work.sparkTask
 
