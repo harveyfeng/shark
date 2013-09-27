@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 The Regents of The University California. 
+ * Copyright (C) 2012 The Regents of The University California.
  * All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,9 +19,11 @@ package shark.execution.serialization
 
 import java.nio.ByteBuffer
 
+import org.apache.spark.serializer.{JavaSerializer => SparkJavaSerializer}
+
 
 object JavaSerializer {
-  @transient val ser = new spark.JavaSerializer
+  @transient val ser = new SparkJavaSerializer
 
   def serialize[T](o: T): Array[Byte] = {
     ser.newInstance().serialize(o).array()

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 The Regents of The University California. 
+ * Copyright (C) 2012 The Regents of The University California.
  * All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -52,8 +52,7 @@ import org.apache.thrift.transport.TTransport
 import org.apache.thrift.transport.TTransportFactory
 
 import shark.streaming.StreamingDriver
-
-import spark.SparkEnv
+import org.apache.spark.SparkEnv
 
 
 /**
@@ -121,6 +120,11 @@ object SharkServer extends LogHelper {
     logInfo(startupMsg)
     println(startupMsg)
     server.serve()
+  }
+
+  def stop() {
+    server.stop()
+    SharkEnv.stop()
   }
 
   // Return true if the server is ready to accept requests.

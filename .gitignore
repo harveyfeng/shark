@@ -5,6 +5,7 @@ project/boot
 lib_managed/
 TempStatsStore
 work/
+run-tests-from-scratch-workspace/
 
 conf/shark-env.sh
 
@@ -45,3 +46,7 @@ paper.aux
 # Test Reports
 TEST*.xml
 test_warehouses
+
+# Ensime files for emacs
+.ensime
+.ensime_lucene
