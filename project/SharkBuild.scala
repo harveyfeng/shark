@@ -66,7 +66,7 @@ object SharkBuild extends Build {
   def qlGenSettings = Defaults.defaultSettings ++ SbtAntlrPlugin.antlrSettings ++ Seq(
     name := "shark-ql-gen",
     libraryDependencies ++= Seq(
-      "org.antlr" % "antlr" % "3.5")
+      "org.antlr" % "antlr" % "3.0.1")
   )
 
   def coreSettings = Defaults.defaultSettings ++ Seq(
@@ -132,9 +132,6 @@ object SharkBuild extends Build {
       // in usual Shark runs.
       "commons-io" % "commons-io" % "2.1",
       "commons-httpclient" % "commons-httpclient" % "3.1" % "test",
-
-      // Shark Streaming relies on ANTLR 3.5 to generate a parser and lexer.
-      "org.antlr" % "antlr" % "3.5",
 
       // Test infrastructure
       "org.scalatest" %% "scalatest" % "1.9.1" % "test",
