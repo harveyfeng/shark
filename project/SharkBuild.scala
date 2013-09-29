@@ -19,6 +19,7 @@ import sbt._
 import Keys._
 
 import sbtassembly.Plugin._
+import sbtantlr.SbtAntlrPlugin
 import AssemblyKeys._
 
 import scala.util.Properties.{ envOrNone => env }
@@ -51,7 +52,7 @@ object SharkBuild extends Build {
   lazy val root = Project(
     id = "root",
     base = file("."),
-    settings = coreSettings ++ assemblyProjSettings)
+    settings = SbtAntlrPlugin.antlrSettings ++ coreSettings ++ assemblyProjSettings)
 
   val excludeKyro = ExclusionRule(organization = "de.javakaffee")
   val excludeHadoop = ExclusionRule(organization = "org.apache.hadoop")
@@ -124,6 +125,9 @@ object SharkBuild extends Build {
       // in usual Shark runs.
       "commons-io" % "commons-io" % "2.1",
       "commons-httpclient" % "commons-httpclient" % "3.1" % "test",
+
+      // Shark Streaming relies on ANTLR 3.5 to generate a parser and lexer.
+      "org.antlr" % "antlr" % "3.5",
 
       // Test infrastructure
       "org.scalatest" %% "scalatest" % "1.9.1" % "test",
