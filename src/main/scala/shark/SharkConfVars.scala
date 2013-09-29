@@ -23,8 +23,8 @@ import org.apache.hadoop.hive.conf.HiveConf
 
 object SharkConfVars {
 
-  //val EXEC_MODE = new ConfVar("shark.exec.mode", "shark")
-  val EXEC_MODE = new ConfVar("shark.exec.mode", "streaming")
+  val EXEC_MODE = new ConfVar("shark.exec.mode", "shark")
+  //val EXEC_MODE = new ConfVar("shark.exec.mode", "streaming")
 
   // This is created for testing. Hive's test script assumes a certain output
   // format. To pass the test scripts, we need to use Hive's EXPLAIN.

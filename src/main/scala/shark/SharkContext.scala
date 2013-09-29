@@ -26,7 +26,7 @@ import scala.collection.JavaConversions._
 import org.apache.hadoop.hive.conf.HiveConf
 import org.apache.hadoop.hive.common.LogUtils
 import org.apache.hadoop.hive.common.LogUtils.LogInitializationException
-import org.apache.hadoop.hive.ql.Driver
+import org.apache.hadoop.hive.ql.{Driver => HiveDriver}
 import org.apache.hadoop.hive.ql.processors.CommandProcessor
 import org.apache.hadoop.hive.ql.processors.CommandProcessorFactory
 import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse
@@ -35,6 +35,7 @@ import org.apache.hadoop.hive.ql.session.SessionState
 import org.apache.spark.{SparkContext, SparkEnv}
 
 import shark.api._
+import shark.streaming.StreamingDriver
 
 
 class SharkContext(
@@ -63,13 +64,8 @@ class SharkContext(
 
     SessionState.start(sessionState)
 
-    if (proc.isInstanceOf[Driver]) {
-      val driver: Driver =
-        if (SharkConfVars.getVar(hiveconf, SharkConfVars.EXEC_MODE) == "shark") {
-          new SharkDriver(hiveconf)
-        } else {
-          proc.asInstanceOf[Driver]
-        }
+    if (proc.isInstanceOf[HiveDriver]) {
+      val driver: HiveDriver = getDriverFromExecMode(hiveconf, proc)
       driver.init()
 
       val results = new JArrayList[String]
@@ -122,8 +118,8 @@ class SharkContext(
 
     SessionState.start(sessionState)
 
-    if (proc.isInstanceOf[Driver]) {
-      val driver = new SharkDriver(hiveconf)
+    if (proc.isInstanceOf[HiveDriver]) {
+      val driver = getSharkDriverFromExecMode(hiveconf)
       try {
         driver.init()
 
@@ -142,7 +138,7 @@ class SharkContext(
               new ResultSet(rdd.schema, data.take(math.min(maxRows, rdd.limit)))
             }
           case None =>
-            // If this is not a select statement, we use the Driver's getResults function
+            // If this is not a select statement, we use the HiveDriver's getResults function
             // to fetch the results back.
             val schema = ColumnDesc.createSchema(driver.getSchema)
             val results = new JArrayList[String]
@@ -191,6 +187,30 @@ object SharkContext {
 
   // A dummy init to make sure the object is properly initialized.
   def init() {}
+
+  def getDriverFromExecMode(hconf: HiveConf, driver: CommandProcessor): HiveDriver = {
+    val execMode = SharkConfVars.getVar(hconf, SharkConfVars.EXEC_MODE)
+    val driverForExecMode: HiveDriver =
+      if (execMode == "shark") {
+        new SharkDriver(hconf)
+      } else if (execMode == "streaming") {
+        new StreamingDriver(hconf)
+      } else {
+        driver.asInstanceOf[HiveDriver]
+      }
+    return driverForExecMode
+  }
+
+  def getSharkDriverFromExecMode(hconf: HiveConf): SharkDriver = {
+    val execMode = SharkConfVars.getVar(hconf, SharkConfVars.EXEC_MODE)
+    val driverForExecMode: SharkDriver =
+      if (execMode == "streaming") {
+        new StreamingDriver(hconf)
+      } else {
+        new SharkDriver(hconf)
+      }
+    return driverForExecMode
+  }
 }
 
 

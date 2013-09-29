@@ -52,7 +52,7 @@ object SharkBuild extends Build {
   lazy val root = Project(
     id = "root",
     base = file("."),
-    settings = coreSettings) dependsOn(qlGen)
+    settings = coreSettings ++ assemblyProjSettings) dependsOn(qlGen)
 
   lazy val qlGen = Project("ql-gen", base = file("ql-gen"), settings = qlGenSettings)
 
@@ -141,7 +141,7 @@ object SharkBuild extends Build {
       (if (STREAMING_ENABLED) Some("org.apache.spark" %% "spark-streaming" % SPARK_VERSION) else None).toSeq ++
       (if (YARN_ENABLED) Some("org.apache.spark" %% "spark-yarn" % SPARK_VERSION) else None).toSeq ++
       (if (TACHYON_ENABLED) Some("org.tachyonproject" % "tachyon" % "0.3.0-SNAPSHOT" excludeAll(excludeKyro, excludeHadoop) ) else None).toSeq
-  ) ++ assemblyProjSettings
+  )
 
   def assemblyProjSettings = Seq(
     jarName in assembly <<= version map { v => "shark-assembly-" + v + "-hadoop" + hadoopVersion + ".jar" }
