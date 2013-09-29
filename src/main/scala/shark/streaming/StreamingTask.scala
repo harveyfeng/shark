@@ -86,6 +86,8 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
     sparkTask.initializeTableScanTableDesc(tableScanOps)
     sparkTask.initializeAllHiveOperators(terminalOp)
 
+    sparkTask.isSubTask = true
+
     for (streamScanOp <- cmdContext.streamOps) {
       streamScanOp.initializeInputStream()
     }

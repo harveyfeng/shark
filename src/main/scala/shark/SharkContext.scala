@@ -92,7 +92,7 @@ class SharkContext(
   def sql2rdd(cmd: String): TableRDD = {
     SparkEnv.set(sparkEnv)
     SessionState.start(sessionState)
-    val driver = new SharkDriver(hiveconf)
+    val driver = getSharkDriverFromExecMode(hiveconf)
     try {
       driver.init()
       driver.tableRdd(cmd).get

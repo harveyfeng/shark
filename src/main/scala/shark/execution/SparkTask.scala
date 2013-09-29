@@ -51,6 +51,8 @@ class SparkTask extends HiveTask[SparkWork] with Serializable with LogHelper {
 
   private var _tableRdd: Option[TableRDD] = None
 
+  var isSubTask = false
+
   def tableRdd: Option[TableRDD] = _tableRdd
 
   override def execute(driverContext: DriverContext): Int = {
@@ -108,9 +110,9 @@ class SparkTask extends HiveTask[SparkWork] with Serializable with LogHelper {
     // TODO(harvey): Create a new SharkStreamigDependentTask and override a new
     //               InitializeExecution() method. Makes it easier to override Execute() and insert
     //               custom execution hooks.
-    //if (terminalOp.isInstanceOf[TableRddSinkOperator]) {
+    if (terminalOp.isInstanceOf[TableRddSinkOperator] || isSubTask) {
       _tableRdd = Some(new TableRDD(sinkRdd, work.resultSchema, terminalOp.objectInspector, limit))
-    //}
+    }
 
     0
   }
