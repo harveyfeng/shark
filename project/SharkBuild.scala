@@ -26,9 +26,9 @@ import scala.util.Properties.{ envOrNone => env }
 object SharkBuild extends Build {
 
   // Shark version
-  val SHARK_VERSION = "0.8.0-SNAPSHOT"
+  val SHARK_VERSION = "0.8.0-incubating"
 
-  val SPARK_VERSION = "0.8.0-SNAPSHOT"
+  val SPARK_VERSION = "0.8.0-incubating"
 
   val SCALA_VERSION = "2.9.3"
 
@@ -42,6 +42,8 @@ object SharkBuild extends Build {
 
   // Whether to build Shark with Yarn support
   val YARN_ENABLED = env("SHARK_YARN").getOrElse("false").toBoolean
+
+  val STREAMING_ENABLED = true
 
   // Whether to build Shark with Tachyon jar.
   val TACHYON_ENABLED = false
@@ -72,7 +74,8 @@ object SharkBuild extends Build {
     resolvers ++= Seq(
       "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
       "Cloudera Repository" at "https://repository.cloudera.com/artifactory/cloudera-repos/",
-      "Local Maven" at Path.userHome.asFile.toURI.toURL + ".m2/repository"
+      "Local Maven" at Path.userHome.asFile.toURI.toURL + ".m2/repository",
+      "Spark RC5" at "https://repository.apache.org/content/repositories/orgapachespark-051/"
     ),
 
     fork := true,
@@ -110,6 +113,7 @@ object SharkBuild extends Build {
 
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-core" % SPARK_VERSION,
+      "org.apache.spark" %% "spark-streaming" % SPARK_VERSION,
       "org.apache.spark" %% "spark-repl" % SPARK_VERSION,
       "com.google.guava" % "guava" % "14.0.1",
       "org.apache.hadoop" % "hadoop-client" % hadoopVersion excludeAll(excludeJackson, excludeNetty, excludeAsm),
@@ -126,6 +130,7 @@ object SharkBuild extends Build {
       "junit" % "junit" % "4.10" % "test",
       "net.java.dev.jets3t" % "jets3t" % "0.7.1",
       "com.novocode" % "junit-interface" % "0.8" % "test") ++
+      (if (STREAMING_ENABLED) Some("org.apache.spark" %% "spark-streaming" % SPARK_VERSION) else None).toSeq ++
       (if (YARN_ENABLED) Some("org.apache.spark" %% "spark-yarn" % SPARK_VERSION) else None).toSeq ++
       (if (TACHYON_ENABLED) Some("org.tachyonproject" % "tachyon" % "0.3.0-SNAPSHOT" excludeAll(excludeKyro, excludeHadoop) ) else None).toSeq
   )

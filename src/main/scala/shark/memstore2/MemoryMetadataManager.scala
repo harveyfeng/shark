@@ -41,9 +41,6 @@ class MemoryMetadataManager {
   def put(key: String, rdd: RDD[_]) {
     _keyToRdd(key.toLowerCase) = rdd
     val isFromTransformedStream = SharkEnv.streams.isIntermediateStream(key)
-
-    // TODO: tmp fix. remove when upgrading to Spark 0.8.0
-    if (!isFromTransformedStream) rdd.persist(storageLevel)
   }
 
   def get(key: String): Option[RDD[_]] = _keyToRdd.get(key.toLowerCase)

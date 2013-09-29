@@ -10,9 +10,9 @@ import org.apache.hadoop.mapreduce.lib.input.TextInputFormat
 
 import shark.SharkEnv
 
-import spark.storage.StorageLevel
-import spark.streaming.{StreamingContext, DStream, Duration, Time}
-import spark.util.MetadataCleaner
+import org.apache.spark.storage.StorageLevel
+import org.apache.spark.streaming.{StreamingContext, DStream, Duration, Time}
+import org.apache.spark.util.MetadataCleaner
 
 /*
  * Contains metadata for DStreams. Also, create and manage StreamingContexts here,

@@ -17,14 +17,14 @@ import org.apache.hadoop.hive.ql.parse._
 import org.apache.hadoop.hive.ql.plan._
 import org.apache.hadoop.hive.ql.session.SessionState
 
+import shark.api.TableRDD
 import shark.execution.{HiveOperator, Operator, SparkTask, TableScanOperator, TerminalOperator}
-import shark.execution.TableRDD
-import shark.memstore.ColumnarSerDe
+import shark.memstore2.ColumnarSerDe
 import shark.parse.{SharkSemanticAnalyzer, QueryContext}
 import shark.SharkEnv
 
-import spark.streaming.{DStream, Duration, StreamingContext}
-import spark.RDD
+import org.apache.spark.streaming.{DStream, Duration, StreamingContext}
+import org.apache.spark.rdd.RDD
 
 object StreamingOperatorFactory {
   

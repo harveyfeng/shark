@@ -10,13 +10,14 @@ import org.apache.hadoop.hive.ql.plan.api.StageType
 import org.apache.hadoop.hive.ql.QueryPlan;
 import org.apache.hadoop.hive.ql.session.SessionState
 
+import shark.api.TableRDD
 import shark.execution._
 import shark.execution.serialization._
 import shark.{LogHelper, SharkEnv}
 
-import spark.RDD
-import spark.storage.StorageLevel
-import spark.streaming.{Duration, DStream, StreamingContext, Time}
+import org.apache.spark.rdd.RDD
+import org.apache.spark.storage.StorageLevel
+import org.apache.spark.streaming.{Duration, DStream, StreamingContext, Time}
 
 
 trait StreamingTask extends java.io.Serializable
@@ -109,12 +110,17 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
           // Initialize tableScanDesc every time because it sets
           // table partition metadata.
           sparkTask.initializeTableScanTableDesc(tableScanOps)
-          terminalOp.execute().asInstanceOf[RDD[Any]]
-          //tableRdd = new TableRDD(sinkRdd, sparkTask.getWork.resultSchema, terminalOp.objectInspector)
+          val sinkRdd = terminalOp.execute().asInstanceOf[RDD[Any]]
+          new TableRDD(
+            sinkRdd,
+            sparkTask.getWork.resultSchema,
+            terminalOp.objectInspector,
+            -1 /* limit */).asInstanceOf[RDD[Any]]
         } else {
           sparkTask.executeTask()
           isInitialized = true
-          sparkTask.tableRdd.prev
+          // NOTE: See TODO in SparkTask.
+          sparkTask.tableRdd.get.prev
         }
 
       // Execute dependencies

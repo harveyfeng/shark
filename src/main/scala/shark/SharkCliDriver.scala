@@ -260,7 +260,7 @@ object SharkCliDriver {
       }
       if (line.contains("check streams")) {
         val streamManager = SharkEnv.streams
-        val cacheManager = SharkEnv.cache
+        val memoryMetadataManager = SharkEnv.memoryMetadataManager
         line = reader.readLine(curPrompt + "> ")
       }
 

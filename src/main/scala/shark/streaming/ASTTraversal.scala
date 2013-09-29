@@ -8,7 +8,7 @@ import org.apache.hadoop.hive.ql.parse._
 import org.apache.hadoop.hive.ql.lib.Node
 
 import shark.SharkEnv
-import spark.streaming.Duration
+import org.apache.spark.streaming.Duration
 
 
 /**

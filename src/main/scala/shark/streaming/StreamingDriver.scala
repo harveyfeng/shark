@@ -17,12 +17,13 @@ import org.apache.hadoop.hive.ql.session.SessionState
 import org.apache.hadoop.hive.serde2.{SerDe, SerDeUtils}
 import org.apache.hadoop.util.StringUtils
 
-import shark.execution.{SparkTask, SparkWork, TableRDD}
-import shark.memstore.ColumnarSerDe
+import shark.api.TableRDD
+import shark.execution.{SparkTask, SparkWork}
+import shark.memstore2.ColumnarSerDe
 import shark.parse.{QueryContext, SharkSemanticAnalyzerFactory}
 import shark.{LogHelper, SharkEnv, SharkDriver}
 
-import spark.streaming.{StreamingContext, Duration, Seconds}
+import org.apache.spark.streaming.{StreamingContext, Duration, Seconds}
 
 
 /**

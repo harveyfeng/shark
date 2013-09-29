@@ -17,6 +17,9 @@
 
 package shark
 
+import org.apache.hadoop.hive.ql.metadata.Hive
+import org.apache.hadoop.hive.conf.HiveConf
+
 import scala.collection.mutable.{HashMap, HashSet}
 
 import org.apache.spark.{SparkContext, SparkEnv}
@@ -24,8 +27,8 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.scheduler.StatsReportListener
 import org.apache.spark.serializer.{KryoSerializer => SparkKryoSerializer}
 
-import spark.SparkContext
-import spark.streaming.{Duration, StreamingContext}
+import org.apache.spark.SparkContext
+import org.apache.spark.streaming.{Duration, StreamingContext}
 
 import shark.api.JavaSharkContext
 import shark.execution.serialization.ShuffleSerializer
@@ -104,17 +107,14 @@ object SharkEnv extends LogHelper {
 
   var sc: SparkContext = _
 
-<<<<<<< HEAD
   val streams: StreamManager = new StreamManager
-  val cache: CacheManager = new CacheManager
-=======
+
   val shuffleSerializerName = classOf[ShuffleSerializer].getName
 
   val memoryMetadataManager = new MemoryMetadataManager
 
   val tachyonUtil = new TachyonUtilImpl(
     System.getenv("TACHYON_MASTER"), System.getenv("TACHYON_WAREHOUSE_PATH"))
->>>>>>> master
 
   // The following line turns Kryo serialization debug log on. It is extremely chatty.
   //com.esotericsoftware.minlog.Log.set(com.esotericsoftware.minlog.Log.LEVEL_DEBUG)
@@ -141,7 +141,7 @@ object SharkEnv extends LogHelper {
 
     // Drop cached tables
     val db = Hive.get(new HiveConf)
-    for (table <- SharkEnv.cache.getAllKeyStrings) {
+    for (table <- SharkEnv.memoryMetadataManager.getAllKeyStrings) {
       logInfo("Dropping cached table: " + table)
       db.dropTable("default", table, false, true)
     }
@@ -170,6 +170,8 @@ object SharkEnv extends LogHelper {
 
 /** A singleton object for the slaves. */
 object SharkEnvSlave {
+
+  val objectInspectorLock = new Object()
 
   val tachyonUtil = new TachyonUtilImpl(
     System.getenv("TACHYON_MASTER"), System.getenv("TACHYON_WAREHOUSE_PATH"))

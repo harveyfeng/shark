@@ -105,9 +105,12 @@ class SparkTask extends HiveTask[SparkWork] with Serializable with LogHelper {
       case _ => -1
     }
 
-    if (terminalOp.isInstanceOf[TableRddSinkOperator]) {
+    // TODO(harvey): Create a new SharkStreamigDependentTask and override a new
+    //               InitializeExecution() method. Makes it easier to override Execute() and insert
+    //               custom execution hooks.
+    //if (terminalOp.isInstanceOf[TableRddSinkOperator]) {
       _tableRdd = Some(new TableRDD(sinkRdd, work.resultSchema, terminalOp.objectInspector, limit))
-    }
+    //}
 
     0
   }

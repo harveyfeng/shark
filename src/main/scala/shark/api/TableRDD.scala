@@ -35,6 +35,8 @@ class TableRDD(
     val limit: Int = -1)
   extends RDD[Row](prev) {
 
+  def prev(): RDD[Any] = prev
+
   private[shark]
   def this(prev: RDD[Any], schema: JList[FieldSchema], oi: ObjectInspector, limit: Int) {
     this(prev, ColumnDesc.createSchema(schema), oi, limit)

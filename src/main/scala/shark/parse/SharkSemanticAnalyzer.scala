@@ -298,8 +298,7 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
               location = wh.getTablePath(db.getDatabase(dumpTable.getDbName()), dumpTable
                   .getTableName()).toString;
             } catch {
-              case e: HiveException => throw new SemanticException(e)
-              case e: MetaException => throw new SemanticException(e)
+              case e: Exception => throw new SemanticException(e)
             }
           }
           lfd.setTargetDir(location)

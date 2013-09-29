@@ -9,7 +9,7 @@ import org.apache.hadoop.conf.Configuration
 import shark.execution.{SparkTask, TableScanOperator}
 import shark.parse.QueryContext
 
-import spark.streaming.{DStream, Duration}
+import org.apache.spark.streaming.{DStream, Duration}
 
 /**
  * Some metadata needed to drive continuous query execution.

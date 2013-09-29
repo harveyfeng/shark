@@ -22,11 +22,9 @@ import org.apache.hadoop.io.{Text, Writable}
 import shark.{SharkConfVars, SharkEnv}
 import shark.execution.serialization.XmlSerializer
 import shark.execution.{Operator, SelectOperator, TableScanOperator}
-import shark.memstore.{TableStats, TableStorage}
-import spark.RDD
-import spark.rdd.{PartitionPruningRDD, UnionRDD}
+import org.apache.spark.rdd.{PartitionPruningRDD, RDD, UnionRDD}
 
-import spark.streaming.{DStream, Duration, Interval, Time}
+import org.apache.spark.streaming.{DStream, Duration, Interval, Time}
 
 /**
  * Replaces TableScanOperator as the TopOperator in Shark operator trees.
