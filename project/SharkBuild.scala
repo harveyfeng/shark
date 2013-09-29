@@ -52,7 +52,9 @@ object SharkBuild extends Build {
   lazy val root = Project(
     id = "root",
     base = file("."),
-    settings = SbtAntlrPlugin.antlrSettings ++ coreSettings ++ assemblyProjSettings)
+    settings = coreSettings) dependsOn(qlGen)
+
+  lazy val qlGen = Project("ql-gen", base = file("ql-gen"), settings = qlGenSettings)
 
   val excludeKyro = ExclusionRule(organization = "de.javakaffee")
   val excludeHadoop = ExclusionRule(organization = "org.apache.hadoop")
@@ -61,8 +63,13 @@ object SharkBuild extends Build {
   val excludeAsm = ExclusionRule(organization = "asm")
   val excludeSnappy = ExclusionRule(organization = "org.xerial.snappy")
 
-  def coreSettings = Defaults.defaultSettings ++ Seq(
+  def qlGenSettings = Defaults.defaultSettings ++ SbtAntlrPlugin.antlrSettings ++ Seq(
+    name := "shark-ql-gen",
+    libraryDependencies ++= Seq(
+      "org.antlr" % "antlr" % "3.5")
+  )
 
+  def coreSettings = Defaults.defaultSettings ++ Seq(
     name := "shark",
     organization := "edu.berkeley.cs.amplab",
     version := SHARK_VERSION,
@@ -137,7 +144,7 @@ object SharkBuild extends Build {
       (if (STREAMING_ENABLED) Some("org.apache.spark" %% "spark-streaming" % SPARK_VERSION) else None).toSeq ++
       (if (YARN_ENABLED) Some("org.apache.spark" %% "spark-yarn" % SPARK_VERSION) else None).toSeq ++
       (if (TACHYON_ENABLED) Some("org.tachyonproject" % "tachyon" % "0.3.0-SNAPSHOT" excludeAll(excludeKyro, excludeHadoop) ) else None).toSeq
-  )
+  ) ++ assemblyProjSettings
 
   def assemblyProjSettings = Seq(
     jarName in assembly <<= version map { v => "shark-assembly-" + v + "-hadoop" + hadoopVersion + ".jar" }
