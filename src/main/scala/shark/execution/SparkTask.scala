@@ -54,7 +54,7 @@ class SparkTask extends HiveTask[SparkWork] with Serializable with LogHelper {
   def tableRdd: Option[TableRDD] = _tableRdd
 
   override def execute(driverContext: DriverContext): Int = {
-    logInfo("Executing " + this.getClass.getName)
+    logDebug("Executing " + this.getClass.getName)
 
     val ctx = driverContext.getCtx()
 
@@ -119,6 +119,7 @@ class SparkTask extends HiveTask[SparkWork] with Serializable with LogHelper {
     // topToTable maps Hive's TableScanOperator to the Table object.
     val topToTable: JHashMap[HiveTableScanOperator, Table] = work.pctx.getTopToTable()
 
+    val emptyPartnArray = new Array[Partition](0)
     // Add table metadata to TableScanOperators
     topOps.foreach { op =>
       op.table = topToTable.get(op.hiveOp)
@@ -130,7 +131,8 @@ class SparkTask extends HiveTask[SparkWork] with Serializable with LogHelper {
           work.pctx.getOpToPartPruner().get(op.hiveOp),
           work.pctx.getConf(), "",
           work.pctx.getPrunedPartitions())
-        op.parts = ppl.getConfirmedPartns.toArray ++ ppl.getUnknownPartns.toArray
+        op.parts = ppl.getConfirmedPartns.toArray(emptyPartnArray) ++
+          ppl.getUnknownPartns.toArray(emptyPartnArray)
         val allParts = op.parts ++ ppl.getDeniedPartns.toArray
         if (allParts.size == 0) {
           op.firstConfPartDesc = new PartitionDesc(op.tableDesc, null)

@@ -90,7 +90,7 @@ object SharkEnv extends LogHelper {
     new JavaSharkContext(initWithSharkContext(newSc.sharkCtx))
   }
 
-  logInfo("Initializing SharkEnv")
+  logDebug("Initializing SharkEnv")
 
   System.setProperty("spark.serializer", classOf[SparkKryoSerializer].getName)
   System.setProperty("spark.kryo.registrator", classOf[KryoRegistrator].getName)
@@ -131,8 +131,7 @@ object SharkEnv extends LogHelper {
         logWarning("Failed to remove table " + key + " from Tachyon.");
       }
     }
-
-    memoryMetadataManager.unpersist(key)
+    return memoryMetadataManager.unpersist(key)
   }
 
   /** Cleans up and shuts down the Shark environments. */

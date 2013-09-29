@@ -175,12 +175,6 @@ object SharkContext {
   @transient val hiveconf = new HiveConf(classOf[SessionState])
   Utils.setAwsCredentials(hiveconf)
 
-  try {
-    LogUtils.initHiveLog4j()
-  } catch {
-    case e: LogInitializationException => // Ignore the error.
-  }
-
   @transient val sessionState = new SessionState(hiveconf)
   sessionState.out = new PrintStream(System.out, true, "UTF-8")
   sessionState.err = new PrintStream(System.out, true, "UTF-8")
