@@ -109,7 +109,7 @@ class StreamManager {
   def createFileStream(
       name: String,
       readDirectory: String,
-      batchDuration: Duration) {
+      batchDuration: Duration): DStream[_] = {
     val ssc = _durationToSsc.get(batchDuration) match {
       case ssc: StreamingContext => ssc
       case _ => createNewSsc(batchDuration)
@@ -121,6 +121,7 @@ class StreamManager {
     val streamName = name.toLowerCase
     _keyToDStream.put(streamName, newStream)
     _inputStreams.add(streamName)
+    return newStream
   }
 
   private def createNewSsc(batchDuration: Duration): StreamingContext = {

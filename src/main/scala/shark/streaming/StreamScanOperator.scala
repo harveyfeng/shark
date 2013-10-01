@@ -35,8 +35,6 @@ import org.apache.spark.streaming.{DStream, Duration, Interval, Time}
  */
 class StreamScanOperator extends TableScanOperator {
 
-  //@BeanProperty var tableName: String = _
-
   // TODO: figure out which vars actually need @BeanProperty.
   // Time at which the DStream generates an RDD for the table being
   // scanned, OR time of a "real time" query.
@@ -94,6 +92,7 @@ class StreamScanOperator extends TableScanOperator {
     return formattedRDD
   }
 
+  // Append the compute time to the tuple.
   override def preprocessRdd(rdd: RDD[_]): RDD[_] = {
     // TODO: figure out how Java serialization propagates...
     //val separator2 = separator

@@ -23,6 +23,7 @@ class StreamingCommandContext(
 	var isCreateStream: Boolean = _
 	var isDerivedStream: Boolean = _
 	var isArchiveStream: Boolean = _
+	var isStreamJoin: Boolean = _
 
 	// User-specified READ DIRECTORY for CREATE STREAM
 	var readDirectory: String = _

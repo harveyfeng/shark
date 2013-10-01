@@ -93,9 +93,9 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
     }
 
     // If the executor needs a window...
-    //val executor = getExecutor(cmdContext.streamOps, cmdContext.duration)
     val executor = work.executor
 
+    // TODO(harvey): Change this to 'topOps'.
     val cq = (rdd: RDD[_], time: Time) => {
       for (streamScanOp <- cmdContext.streamOps) {
         streamScanOp.currentComputeTime = time.milliseconds
@@ -142,18 +142,6 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
       executor.foreach((rdd, time) => cq(rdd, time))
     }
     0
-  }
-
-  def getExecutor(scanOps: Seq[StreamScanOperator], duration: Duration): DStream[_] = {
-    // Use the DStream with smallest slideDuration.
-    val sourceDStream = scanOps.sortWith((a, b) => a.inputDStream.slideDuration < b.inputDStream.slideDuration).head
-    // If the user provides a batch duration and there are > 1 sources, trust that
-    // it will be a valid duration (for now)
-    if (duration == null || duration == sourceDStream.inputDStream.slideDuration) {
-      return sourceDStream.inputDStream
-    } else {
-      sourceDStream.inputDStream.window(duration, duration)
-    }
   }
 
   override def getType = StageType.MAPRED
