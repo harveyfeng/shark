@@ -134,7 +134,7 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
     }
 
     if (cmdContext.isDerivedStream) {
-      val transformed = executor.transform(cq).persist(StorageLevel.MEMORY_ONLY)
+      val transformed = executor.transform(cq).persist(StorageLevel.MEMORY_ONLY_SER)
       SharkEnv.streams.putIntermediateStream(cmdContext.tableName, transformed, executor)
       transformed.foreach(_ => Unit)
     } else if (cmdContext.isArchiveStream) {

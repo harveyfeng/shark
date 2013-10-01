@@ -214,8 +214,7 @@ object SharkCliDriver {
     val lines2 = "drop table if exists src_stream;" +
       "drop table if exists src2_stream;" +
       "drop table if exists src_archive;" +
-      "create stream src_stream(key int, value string, time bigint) " +
-        "as read directory '/Users/harveyfeng/testing/test/kv1.txt' batch '4 seconds';" +
+      "create stream src_stream(key int, value string, time bigint) as read directory '/Users/harveyfeng/testing/test/kv1.txt' batch '4 seconds';" +
       "create stream src2_stream as select * from last '8 seconds' of src_stream batch '4 seconds';" +
       "create table src_archive(key int, value string, time bigint);" +
       "insert into table src_archive select * from last '8 seconds' of src2_stream batch '4 seconds';" +

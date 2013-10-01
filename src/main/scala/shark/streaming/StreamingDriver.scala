@@ -225,8 +225,8 @@ object StreamingDriver {
       if (command.toLowerCase.contains("as select")) {
         val splitIndex = command.toLowerCase.indexOf("as select")
         command = command.substring(0, splitIndex) +
-          " ROW FORMAT SERDE 'shark.memstore.ColumnarSerDe$WithStats' " +
-          " TBLPROPERTIES('shark.cache'='true', 'shark.cache.storageLevel'='MEMORY_ONLY') " +
+          " ROW FORMAT SERDE 'shark.memstore2.ColumnarSerDe' " +
+          " TBLPROPERTIES('shark.cache'='true', 'shark.cache.storageLevel'='MEMORY_ONLY_SER') " +
           command.substring(splitIndex, command.length)
       }
     }

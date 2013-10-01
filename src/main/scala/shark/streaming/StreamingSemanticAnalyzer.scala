@@ -154,7 +154,8 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
         cmdContext.isDerivedStream = true
       }
 
-      val inputStreams = StreamingOperatorFactory.createStreamingTreeFromSharkTree(
+      val inputStreams =
+        StreamingOperatorFactory.createStreamingTreeFromSharkTree(
           sparkTasks.head.getWork.terminalOperator.returnTopOperators,
           cmdContext,
           pctx)
