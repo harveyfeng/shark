@@ -8,11 +8,18 @@ import java.util.{HashMap => JavaHashMap, HashSet => JavaHashSet}
 import org.apache.hadoop.io.{LongWritable, Text, Writable}
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat
 
-import shark.SharkEnv
-
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.{StreamingContext, DStream, Duration, Time}
 import org.apache.spark.util.MetadataCleaner
+
+import shark.api.RDDTable
+import shark.util.HiveUtils
+import shark.SharkEnv
+import shark.streaming.util.TwitterUtils
+import shark.memstore2.CacheType
+
+import twitter4j._
+
 
 /*
  * Contains metadata for DStreams. Also, create and manage StreamingContexts here,
@@ -29,6 +36,8 @@ class StreamManager {
   private val _inputStreams = new JavaHashSet[String]()
   private val _intermediateStreams = new JavaHashSet[String]()
   private val _startedSscs = new JavaHashSet[StreamingContext]()
+  
+  private val _isTwitterInput = new JavaHashSet[String]();
 
   // For testing/debugging
   private val _latestComputeTimes = new JavaHashMap[DStream[_], Time]()
@@ -110,13 +119,20 @@ class StreamManager {
       name: String,
       readDirectory: String,
       batchDuration: Duration): DStream[_] = {
-    val ssc = _durationToSsc.get(batchDuration) match {
-      case ssc: StreamingContext => ssc
-      case _ => createNewSsc(batchDuration)
-    }
+    // val ssc = _durationToSsc.get(batchDuration) match {
+    //   case ssc: StreamingContext => ssc
+    //   case _ => createNewSsc(batchDuration)
+    // }
+    val ssc: StreamingContext = 
+      if (_durationToSsc.size == 0) {
+        createNewSsc(batchDuration)
+      } else {
+        _durationToSsc.values.toSeq(0)
+      }
     // Note: only support new hadoop.mapreduce API. Hive uses the old one (package hadoop.mapred).
     // should throw an exception.
-    val newStream = ssc.fileStream[LongWritable, Text, TextInputFormat](readDirectory).map(tup => new Text(tup._2))
+    val newStream = ssc.fileStream[LongWritable, Text, TextInputFormat](readDirectory).map(
+      tup => new Text(tup._2))
     _streamToSsc.put(newStream, ssc)
     val streamName = name.toLowerCase
     _keyToDStream.put(streamName, newStream)
@@ -124,6 +140,100 @@ class StreamManager {
     return newStream
   }
 
+  def createTwitterStream(name: String, batchDuration: Duration): DStream[_] = {
+    def safeValue(a: Any) = Option(a)
+      .map(_.toString)
+      .map(_.replace("\t", ""))
+      .map(_.replace("\"", ""))
+      .map(_.replace("\n", ""))
+      .map(_.replaceAll("[\\p{C}]","")) // Control characters
+      .getOrElse("")
+
+    val hiveDateFormat = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.0")
+    val fields: Seq[(Status => Any, String, String)] = Seq(
+      (s => s.getId, "id", "BIGINT"),
+      (s => s.getInReplyToStatusId, "reply_status_id", "BIGINT"),
+      (s => s.getInReplyToUserId, "reply_user_id", "BIGINT"),
+      (s => s.getRetweetCount, "retweet_count", "INT"),
+      (s => s.getText, "text", "STRING"),
+      (s => Option(s.getGeoLocation).map(_.getLatitude()).getOrElse(""), "latitude", "FLOAT"),
+      (s => Option(s.getGeoLocation).map(_.getLongitude()).getOrElse(""), "longitude", "FLOAT"),
+      (s => s.getSource, "source", "STRING"),
+      (s => s.getUser.getId, "user_id", "INT"),
+      (s => s.getUser.getName, "user_name", "STRING"),
+      (s => s.getUser.getScreenName, "user_screen_name", "STRING"),
+      (s => hiveDateFormat.format(s.getUser.getCreatedAt), "user_created_at", "TIMESTAMP"),
+      (s => s.getUser.getFollowersCount, "user_followers", "BIGINT"),
+      (s => s.getUser.getFavouritesCount, "user_favorites", "BIGINT"),
+      (s => s.getUser.getLang, "user_language", "STRING"),
+      (s => s.getUser.getLocation, "user_location", "STRING"),
+      (s => s.getUser.getTimeZone, "user_timezone", "STRING"),
+      (s => hiveDateFormat.format(s.getCreatedAt), "created_at", "TIMESTAMP")
+    )
+
+    val ssc = 
+      if (_durationToSsc.size == 0) {
+        createNewSsc(batchDuration)
+      } else {
+        _durationToSsc.values.toSeq(0)
+      }
+    TwitterUtils.configureTwitterCredentials()
+    val newDStream = ssc.twitterStream(None, Nil, StorageLevel.MEMORY_ONLY_SER)
+    // Transform this into a TableRDD
+    val newTupleStream = newDStream.map(s =>
+      // Tuple18
+      (
+        s.getId,
+        s.getInReplyToStatusId,
+        s.getInReplyToUserId,
+        s.getRetweetCount,
+        s.getText,
+        Option(s.getGeoLocation).map(_.getLatitude()).getOrElse(0.0),
+        Option(s.getGeoLocation).map(_.getLongitude()).getOrElse(0.0),
+        s.getSource,
+        s.getUser.getId,
+        s.getUser.getName,
+        s.getUser.getScreenName,
+        hiveDateFormat.format(s.getUser.getCreatedAt),
+        s.getUser.getFollowersCount,
+        s.getUser.getFavouritesCount,
+        s.getUser.getLang,
+        s.getUser.getLocation,
+        s.getUser.getTimeZone,
+        hiveDateFormat.format(s.getCreatedAt)
+      )
+    )
+    
+    val manifests = RDDTable.getManifests(newTupleStream)
+   
+    SharkEnv.memoryMetadataManager.add(name, false, CacheType.HEAP)
+    
+    val colNames = fields.map{case (f, colName, hiveType) => colName}
+
+    HiveUtils.createTableInHive(
+      name,
+      colNames,
+      manifests)
+    val newSharkStream = newTupleStream.transform { rddOfTuples =>
+        RDDTable(rddOfTuples).saveAsDStreamTable(name, colNames)
+      }
+    
+    _isTwitterInput.add(name)
+
+    // Force execute
+    newSharkStream.foreach{rdd =>
+      SharkEnv.memoryMetadataManager.put(name, rdd)}
+
+    _streamToSsc.put(newSharkStream, ssc)
+    val streamName = name.toLowerCase
+    _keyToDStream.put(streamName, newSharkStream)
+    _inputStreams.add(streamName)
+
+    return newSharkStream
+  }
+
+  def isTwitterInput(name: String) = _isTwitterInput.contains(name)
+  
   private def createNewSsc(batchDuration: Duration): StreamingContext = {
     // Set the default cleaner delay to an hour if not already set.
     // This should be sufficient for even 1 second interval.

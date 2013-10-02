@@ -68,8 +68,10 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
   override def initialize(conf: HiveConf, queryPlan: QueryPlan, driverContext: DriverContext) {
     super.initialize(conf, queryPlan, driverContext)
     work.sparkTask.initialize(conf, queryPlan, driverContext)
-    for (childTask <- work.sparkTask.getChildTasks) {
-      childTask.initialize(conf, queryPlan, driverContext)
+    if (work.sparkTask.getChildTasks != null) {
+      for (childTask <- work.sparkTask.getChildTasks) {
+        childTask.initialize(conf, queryPlan, driverContext)
+      }
     }
   }
 
@@ -126,11 +128,23 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
         }
 
       // Execute dependencies
-      for (childTask <- sparkTask.getChildTasks) {
-        childTask.executeTask()
+      if (sparkTask.getChildTasks != null) {
+        for (childTask <- sparkTask.getChildTasks) {
+          childTask.executeTask()
+        }
       }
 
       retRdd
+    }
+    
+    if (SharkEnv.streams.hasSscStarted(executor)) {
+      sparkTask.executeTask()
+      // Execute dependencies
+      if (sparkTask.getChildTasks != null) {
+        for (childTask <- sparkTask.getChildTasks) {
+          childTask.executeTask()
+        }
+      }
     }
 
     if (cmdContext.isDerivedStream) {

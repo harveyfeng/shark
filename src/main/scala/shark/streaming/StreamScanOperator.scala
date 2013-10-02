@@ -19,12 +19,16 @@ import org.apache.hadoop.hive.serde2.objectinspector.{ObjectInspector, ObjectIns
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory
 import org.apache.hadoop.io.{Text, Writable}
 
-import shark.{SharkConfVars, SharkEnv}
-import shark.execution.serialization.XmlSerializer
-import shark.execution.{Operator, SelectOperator, TableScanOperator}
 import org.apache.spark.rdd.{PartitionPruningRDD, RDD, UnionRDD}
 
 import org.apache.spark.streaming.{DStream, Duration, Interval, Time}
+import org.apache.spark.streaming.dstream.TwitterInputDStream
+
+import shark.memstore2.TablePartition
+
+import shark.{SharkConfVars, SharkEnv}
+import shark.execution.serialization.XmlSerializer
+import shark.execution.{Operator, SelectOperator, TableScanOperator}
 
 /**
  * Replaces TableScanOperator as the TopOperator in Shark operator trees.
@@ -47,12 +51,17 @@ class StreamScanOperator extends TableScanOperator {
 
   @transient var inputRdd: RDD[_] = _
 
+  @BeanProperty var isTwitterInput: Boolean = _
+
   @BeanProperty var separator: Byte = _
 
   // Initialization in StreamingTask, after TableScanOp is initialized
   def initializeInputStream() {
     super.initializeOnMaster()
-    separator = inputObjectInspectors(0).asInstanceOf[LazySimpleStructObjectInspector].getSeparator
+    isTwitterInput = SharkEnv.streams.isTwitterInput(tableName.toLowerCase)
+    if (!isTwitterInput) {
+      separator = inputObjectInspectors(0).asInstanceOf[LazySimpleStructObjectInspector].getSeparator
+    }
     // Get the inputDStream. We must use WindowedDStream, since it
     // sets rememberDuration for dependencies. This is called before SSC
     // starts.
@@ -79,14 +88,23 @@ class StreamScanOperator extends TableScanOperator {
 
     // Update the latest compute time
     SharkEnv.streams.updateComputeTime(inputDStream, Time(currentComputeTime))
-
-    //val inputRdds = inputDStream.slice(currentComputeTime, currentComputeTime).asInstanceOf[Seq[RDD[Any]]]
-    //val unionedInputRDDs = SharkEnv.sc.union(inputRdds)
-    //val unionedInputRDD = inputRdds.head
+    
+    if (SharkEnv.streams.hasSscStarted(inputDStream)) {
+      val inputRdds = inputDStream.slice(Time(currentComputeTime) - inputDStream.slideDuration, Time(currentComputeTime)).asInstanceOf[Seq[RDD[Any]]]
+      inputRdd = SharkEnv.sc.union(inputRdds)
+    }
+    if (isTwitterInput) return inputRdd.mapPartitions { part =>
+      if (part.isInstanceOf[TablePartition]) {
+        part.asInstanceOf[TablePartition].iterator
+      } else {
+        part.next.asInstanceOf[TablePartition].iterator
+      }
+    }
 
     // Delegate partition processing to TableScanOperator once we have the duration RDDs.
     // Note: op.processPartition => deserializer.deserialize(v)
-    val rddPreprocessed = if (SharkEnv.streams.isInputStream(tableName)) preprocessRdd(inputRdd) else inputRdd
+    val rddPreprocessed = if (SharkEnv.streams.isInputStream(tableName) && !isTwitterInput) preprocessRdd(inputRdd) else inputRdd
+
     val formattedRDD = Operator.executeProcessPartition(this, rddPreprocessed)
 
     return formattedRDD
@@ -94,6 +112,10 @@ class StreamScanOperator extends TableScanOperator {
 
   // Append the compute time to the tuple.
   override def preprocessRdd(rdd: RDD[_]): RDD[_] = {
+    if (isTwitterInput) {
+      // No need to do anything. The last column should have the time.
+      return rdd
+    }
     // TODO: figure out how Java serialization propagates...
     //val separator2 = separator
     //val currentComputeTime2 = currentComputeTime
@@ -103,7 +125,7 @@ class StreamScanOperator extends TableScanOperator {
     byteBuffer ++= bytes
     bytes = byteBuffer.toArray
 
-    rdd.mapPartitions { part =>
+    return rdd.mapPartitions { part =>
       part.map { tup =>
         // TODO: use set() that takes byte array
         tup.asInstanceOf[Text].append(bytes, 0, bytes.length)

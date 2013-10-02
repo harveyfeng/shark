@@ -60,40 +60,47 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
       context.setCmd(command)
       context.setTryCount(getTryCount())
 
-
-      val cmdContext = context.asInstanceOf[StreamingCommandContext]
-
-      command = StreamingDriver.preprocessCommand(command, cmdContext)
-
-      context.setCmd(command)
-
-      var tree: ASTNode = null
+      // Hacky: Some additions for streaming...
       var sem: BaseSemanticAnalyzer = null
-      if (command.toLowerCase.startsWith("start") || command.toLowerCase.startsWith("stop")) {
+      if (command.toLowerCase.contains("create stream") && command.toLowerCase.contains("twitter_stream")) {
+        SharkEnv.streams.createTwitterStream("twitter_stream", Duration(8000))
+        sem = new StreamingSemanticAnalyzer(conf)
+      } else if (command.toLowerCase.contains("show streams")) {
         sem = new StreamingSemanticAnalyzer(conf)
       } else {
-        tree = ParseUtils.findRootNonNullToken((new ParseDriver()).parse(command, context))
-        sem = SharkSemanticAnalyzerFactory.get(conf, tree)
+        val cmdContext = context.asInstanceOf[StreamingCommandContext]
+
+        command = StreamingDriver.preprocessCommand(command, cmdContext)
+
+        context.setCmd(command)
+
+        var tree: ASTNode = null
+        if (command.toLowerCase.startsWith("start") || command.toLowerCase.startsWith("stop")) {
+          sem = new StreamingSemanticAnalyzer(conf)
+        } else {
+          tree = ParseUtils.findRootNonNullToken((new ParseDriver()).parse(command, context))
+          sem = SharkSemanticAnalyzerFactory.get(conf, tree)
+        }
+
+        // Do semantic analysis and plan generation
+        val saHooks = SharkDriver.saHooksMethod.invoke(this, HiveConf.ConfVars.SEMANTIC_ANALYZER_HOOK,
+          classOf[AbstractSemanticAnalyzerHook]).asInstanceOf[JavaList[AbstractSemanticAnalyzerHook]]
+        // Note: this is never null, but can be empty.
+        if (!saHooks.isEmpty) {
+          val hookCtx = new HiveSemanticAnalyzerHookContextImpl()
+          hookCtx.setConf(conf)
+          saHooks.foreach(_.preAnalyze(hookCtx, tree))
+          sem.analyze(tree, context)
+          hookCtx.update(sem)
+          saHooks.foreach(_.postAnalyze(hookCtx, sem.getRootTasks()))
+        } else {
+          sem.analyze(tree, context)
+        }
+
+        logInfo("Semantic Analysis Completed")
+
+        sem.validate()
       }
-
-      // Do semantic analysis and plan generation
-      val saHooks = SharkDriver.saHooksMethod.invoke(this, HiveConf.ConfVars.SEMANTIC_ANALYZER_HOOK,
-        classOf[AbstractSemanticAnalyzerHook]).asInstanceOf[JavaList[AbstractSemanticAnalyzerHook]]
-      // Note: this is never null, but can be empty.
-      if (!saHooks.isEmpty) {
-        val hookCtx = new HiveSemanticAnalyzerHookContextImpl()
-        hookCtx.setConf(conf)
-        saHooks.foreach(_.preAnalyze(hookCtx, tree))
-        sem.analyze(tree, context)
-        hookCtx.update(sem)
-        saHooks.foreach(_.postAnalyze(hookCtx, sem.getRootTasks()))
-      } else {
-        sem.analyze(tree, context)
-      }
-
-      logInfo("Semantic Analysis Completed")
-
-      sem.validate()
 
       plan = new QueryPlan(command, sem, perfLogger.getStartTime(PerfLogger.DRIVER_RUN))
 
@@ -156,9 +163,6 @@ object StreamingDriver {
 
   def preprocessCommand(cmd: String, cmdContext: StreamingCommandContext): String = {
     var command = cmd
-
-    // TODO: remove after parsing works.
-
 
     // If this is archiving a stream, INSERT INTO TABLE ... SELECT ... FROM ... BATCH ... SECONDS
     if (command.toLowerCase.contains("insert") &&

@@ -52,7 +52,7 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
     if (cmdContext.getCmd.trim.toLowerCase.equals("start")) {
       // If the StreamingContext used for this executor DStream hasn't been started, add a
       // StreamingLaunchTask as a dependency to the CQTask, which adds an output DStream (foreach).
-        val ssc = SharkEnv.streams.getSscs(0)
+      val ssc = SharkEnv.streams.getSscs(0)
       val launchTask = TaskFactory.get(
         new StreamingLaunchWork(ssc, true), conf)
 
