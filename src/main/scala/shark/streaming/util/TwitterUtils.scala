@@ -8,7 +8,8 @@ import scala.collection.mutable.HashMap
 object TwitterUtils {
   /** Configures the Oauth Credentials for accessing Twitter */
   def configureTwitterCredentials() {
-    val file = new File("/Users/harveyfeng/shark-streaming-twitter/src/main/scala/shark/streaming/util/twitter.txt")
+    val filePath = System.getProperty("shark.twitter.credentials.file", "twitter.txt")
+    val file = new File(filePath)
     if (!file.exists) {
       throw new Exception("Could not find configuration file " + file)
     }
