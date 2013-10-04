@@ -62,7 +62,8 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
 
       // Hacky: Some additions for streaming...
       var sem: BaseSemanticAnalyzer = null
-      if (command.toLowerCase.contains("create stream") && command.toLowerCase.contains("twitter_stream")) {
+      if (command.toLowerCase.contains("create stream") && command.toLowerCase.contains("twitter_stream")
+          && !command.toLowerCase.contains("from twitter_stream")) {
         SharkEnv.streams.createTwitterStream("twitter_stream", Duration(8000))
         sem = new StreamingSemanticAnalyzer(conf)
       } else if (command.toLowerCase.contains("show streams")) {

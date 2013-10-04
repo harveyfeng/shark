@@ -75,7 +75,7 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
 
     logInfo("Starting Shark Streaming Semantic Analysis")
 
-    // if (ast.getToken().getType() == SharkParser.TOK_CREATESTREAM) isCreateStream = true
+    // if (ast.getToken().getType() == SharkParser.TOK_CREATESTREAM), then isCreateStream == true
     // Analyze CREATE TABLE command
     if (ast.getToken().getType() == HiveParser.TOK_CREATETABLE) {
       // Note: this means streams are tables...
@@ -98,7 +98,7 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
         if (isCTAS) {
           // CSAS.
           // Get the query plan from SharkSemanticAnalyzer.
-          // This is a DStream transform, so we use CacheSinkOperator to gather stats.
+          // TODO(harvey): If this is a DStream transform, then we use MemoryStoreSinkOperator to gather stats.
           //super.analyzeInternal(ast)
           this.ctx = new QueryContext(conf, false)
 
@@ -116,17 +116,17 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
         super.analyzeInternal(ast)
         return
       }
-    } else {
-      // This is a query. Still need to check for table sources that are streams.
-      SessionState.get().setCommandType(HiveOperation.QUERY)
-      ASTTraversal.processQueryNode(ast, cmdContext)
     }
+    // This is a query. Still need to check for table sources that are streams.
+    SessionState.get().setCommandType(HiveOperation.QUERY)
+    ASTTraversal.processQueryNode(ast, cmdContext)
 
     // Generate Shark SparkTasks and get parse info.
     super.analyzeInternal(ast)
     pctx = getParseContext()
 
     // Is there a stream source?
+    // Note: keyToWindow
     if (cmdContext.keyToWindow.size == 0) {
       if (cmdContext.isCreateStream && isCTAS) {
         throw new SemanticException(
