@@ -39,9 +39,10 @@ object SharkSemanticAnalyzerFactory {
       new SharkExplainSemanticAnalyzer(conf)
     } else if (baseSem.isInstanceOf[DDLSemanticAnalyzer]) {
     	new SharkDDLSemanticAnalyzer(conf)
+    } else if (baseSem.isInstanceOf[LoadSemanticAnalyzer]) {
+      new SharkLoadSemanticAnalyzer(conf)
     } else {
       baseSem
     }
   }
 }
-

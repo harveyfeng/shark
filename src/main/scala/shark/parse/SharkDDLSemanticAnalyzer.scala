@@ -1,11 +1,13 @@
 package shark.parse
 
+import java.util.{List => JavaList}
+
 import scala.collection.JavaConversions._
 
 import org.apache.hadoop.hive.conf.HiveConf
 import org.apache.hadoop.hive.ql.exec.TaskFactory
 import org.apache.hadoop.hive.ql.parse.{ASTNode, BaseSemanticAnalyzer, DDLSemanticAnalyzer, HiveParser}
-import org.apache.hadoop.hive.ql.plan.DDLWork
+import org.apache.hadoop.hive.ql.plan.{AlterTableDesc, DDLWork}
 
 import org.apache.spark.rdd.{UnionRDD, RDD}
 
@@ -31,6 +33,9 @@ class SharkDDLSemanticAnalyzer(conf: HiveConf) extends DDLSemanticAnalyzer(conf)
       }
       case HiveParser.TOK_ALTERTABLE_RENAME => {
         analyzeAlterTableRename(ast)
+      }
+      case HiveParser.TOK_ALTERTABLE_PROPERTIES => {
+        analyzeAlterTableProps(ast)
       }
       case _ => Unit
     }
@@ -67,20 +72,34 @@ class SharkDDLSemanticAnalyzer(conf: HiveConf) extends DDLSemanticAnalyzer(conf)
   private def analyzeAlterTableRename(astNode: ASTNode) {
     val oldTableName = getTableName(astNode)
     if (SharkEnv.memoryMetadataManager.containsTable(oldTableName)) {
-      val newTableName = BaseSemanticAnalyzer.getUnescapedName(
-        astNode.getChild(1).asInstanceOf[ASTNode])
-
-      // Hive's DDLSemanticAnalyzer#AnalyzeInternal() will only populate rootTasks with a DDLTask
-      // and DDLWork that contains an AlterTableDesc.
-      assert(rootTasks.size == 1)
-      val ddlTask = rootTasks.head
-      val ddlWork = ddlTask.getWork
-      assert(ddlWork.isInstanceOf[DDLWork])
-
-      val alterTableDesc = ddlWork.asInstanceOf[DDLWork].getAlterTblDesc
+      val alterTableDesc = getAlterTableDesc()
       val sharkDDLWork = new SharkDDLWork(alterTableDesc)
       ddlTask.addDependentTask(TaskFactory.get(sharkDDLWork, conf))
     }
+  }
+  
+  private def analyzeAlterTableProps(astNode: ASTNode) {
+    val tableName = getTableName(astNode)
+    if (SharkEnv.memoryMetadataManager.containsTable(tableName)) {
+      val alterTableDesc = getAlterTableDesc()
+      val sharkDDLWork = new SharkDDLWork(alterTableDesc)
+      ddlTask.addDependentTask(TaskFactory.get(sharkDDLWork, conf))
+    }
+  }
+
+  private def createSparkLoadTask(table: HiveTable) {
+    
+  }
+
+  private def getAlterTableDesc(): AlterTableDesc = {
+    // Hive's DDLSemanticAnalyzer#AnalyzeInternal() will only populate rootTasks with a DDLTask
+    // and DDLWork that contains an AlterTableDesc.
+    assert(hiveTasks.size == 1)
+    val ddlTask = hiveTasks.head
+    val ddlWork = ddlTask.getWork
+    assert(ddlWork.isInstanceOf[DDLWork])
+
+    return ddlWork.asInstanceOf[DDLWork].getAlterTblDesc
   }
 
   private def getTableName(node: ASTNode): String = {

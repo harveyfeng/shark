@@ -35,8 +35,8 @@ import org.apache.hadoop.util.StringUtils
 
 import shark.api.TableRDD
 import shark.api.QueryExecutionException
-import shark.execution.{SharkDDLTask, SharkDDLWork, SharkExplainTask, SharkExplainWork, SparkTask,
-  SparkWork}
+import shark.execution.{SharkDDLTask, SharkDDLWork, SharkExplainTask, SharkExplainWork,
+  SparkLoadWork, SparkLoadTask, SparkTask, SparkWork}
 import shark.memstore2.ColumnarSerDe
 import shark.parse.{QueryContext, SharkSemanticAnalyzerFactory}
 
@@ -64,8 +64,9 @@ private[shark] object SharkDriver extends LogHelper {
   // Task factory. Add Shark specific tasks.
   TaskFactory.taskvec.addAll(Seq(
     new TaskFactory.taskTuple(classOf[SharkDDLWork], classOf[SharkDDLTask]),
-    new TaskFactory.taskTuple(classOf[SparkWork], classOf[SparkTask]),
-    new TaskFactory.taskTuple(classOf[SharkExplainWork], classOf[SharkExplainTask])))
+    new TaskFactory.taskTuple(classOf[SharkExplainWork], classOf[SharkExplainTask]),
+    new TaskFactory.taskTuple(classOf[SparkLoadWork], classOf[SparkLoadTask]),
+    new TaskFactory.taskTuple(classOf[SparkWork], classOf[SparkTask])))
 
   // Start the dashboard. Disabled by default. This was developed for the demo
   // at SIGMOD. We might turn it on later for general consumption.

@@ -18,14 +18,25 @@
 package shark.execution
 
 import scala.collection.JavaConversions
+import scala.collection.mutable.{ArrayBuffer, Map}
 
 import com.google.common.collect.{Ordering => GOrdering}
+
+import org.apache.hadoop.hive.conf.HiveConf
+import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector
+import org.apache.hadoop.hive.ql.exec.Utilities
+import org.apache.hadoop.hive.ql.io.HiveInputFormat
+import org.apache.hadoop.hive.ql.plan.TableDesc
+import org.apache.hadoop.io.Writable
+import org.apache.hadoop.mapred.{FileInputFormat, InputFormat, JobConf}
 
 import org.apache.spark.{HashPartitioner, Partitioner, RangePartitioner}
 import org.apache.spark.rdd.{RDD, ShuffledRDD, UnionRDD}
 import org.apache.spark.storage.StorageLevel
 
-import shark.SharkEnv
+import shark.memstore2.{TablePartition, TablePartitionBuilder, TablePartitionStats}
+import shark.{SharkEnv, Utils}
+
 
 
 /**
@@ -81,6 +92,91 @@ object RDDUtils {
       case r => r.unpersist()
     }
     return rdd
+  }
+
+  def transformToTableRDD(
+      rdd: RDD[_],
+      generateOIFunc: () => StructObjectInspector,
+      storageLevel: StorageLevel = StorageLevel.MEMORY_ONLY
+    ): (RDD[TablePartition], ArrayBuffer[(Int, TablePartitionStats)]) = {
+
+    // Use an Accumulator to collect statistics
+    val statsAcc = SharkEnv.sc.accumulableCollection(ArrayBuffer[(Int, TablePartitionStats)]())
+
+    // Create the RDD object.
+    val transformedRDD = rdd.mapPartitionsWithIndex { case(partitionIndex, partitionIter) =>
+      //val ois = manifests.map(HiveUtils.getJavaPrimitiveObjectInspector)
+      val ois = generateOIFunc()
+      val builder = new TablePartitionBuilder(ois, 1000000, shouldCompress = false)
+
+      for (product <- partitionIter) {
+        builder.incrementRowCount()
+        // TODO: this is not the most efficient code to do the insertion ...
+        product.productIterator.zipWithIndex.foreach { case (v, i) =>
+          builder.append(i, v.asInstanceOf[Object], ois(i))
+        }
+      }
+
+      statsAcc += Tuple2(partitionIndex, builder.asInstanceOf[TablePartitionBuilder].stats)
+      Iterator(builder.build())
+    }.persist(storageLevel)
+
+    // Force evaluate to put the data in memory. This may throw an exception.
+    transformedRDD.context.runJob(
+      rdd, (iter: Iterator[TablePartition]) => iter.foreach(_ => Unit))
+
+    return (transformedRDD, statsAcc.value)
+  }
+
+  def unionStatsMaps(
+      targetStatsMap: ArrayBuffer[(Int, TablePartitionStats)],
+      otherStatsMap: ArrayBuffer[(Int, TablePartitionStats)]
+    ): ArrayBuffer[(Int, TablePartitionStats)] = {
+    val targetStatsMapSize = targetStatsMap.size
+    for ((otherIndex, tableStats) <- otherStatsMap) {
+      targetStatsMap.append((otherIndex + targetStatsMapSize, tableStats))
+    }
+    return otherStatsMap
+  }
+
+  def createHadoopRdd(
+      path: String,
+      ifc: Class[InputFormat[Writable, Writable]],
+      tableDesc: TableDesc,
+      hiveConf: HiveConf
+    ): RDD[Writable] = {
+    val conf = new JobConf(hiveConf)
+    if (tableDesc != null) {
+      Utilities.copyTableJobPropertiesToConf(tableDesc, conf)
+    }
+    FileInputFormat.setInputPaths(conf, path)
+    val bufferSize = System.getProperty("spark.buffer.size", "65536")
+    conf.set("io.file.buffer.size", bufferSize)
+
+    // Set s3/s3n credentials. Setting them in conf ensures the settings propagate
+    // from Spark's master all the way to Spark's slaves.
+    var s3varsSet = false
+    val s3vars = Seq("fs.s3n.awsAccessKeyId", "fs.s3n.awsSecretAccessKey",
+      "fs.s3.awsAccessKeyId", "fs.s3.awsSecretAccessKey").foreach { variableName =>
+      if (hiveConf.get(variableName) != null) {
+        s3varsSet = true
+        conf.set(variableName, hiveConf.get(variableName))
+      }
+    }
+
+    // If none of the s3 credentials are set in Hive conf, try use the environmental
+    // variables for credentials.
+    if (!s3varsSet) {
+      Utils.setAwsCredentials(conf)
+    }
+
+    // Choose the minimum number of splits. If mapred.map.tasks is set, use that unless
+    // it is smaller than what Spark suggests.
+    val minSplits = math.max(hiveConf.getInt("mapred.map.tasks", 1), SharkEnv.sc.defaultMinSplits)
+    val rdd = SharkEnv.sc.hadoopRDD(conf, ifc, classOf[Writable], classOf[Writable], minSplits)
+
+    // Only take the value (skip the key) because Hive works only with values.
+    return rdd.map(_._2)
   }
 
   /**

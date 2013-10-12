@@ -357,45 +357,4 @@ class TableScanOperator extends TopOperator[HiveTableScanOperator] with HiveTopO
       new UnionRDD(rdds(0).context, rdds)
     }
   }
-
-  private def createHadoopRdd(path: String, ifc: Class[InputFormat[Writable, Writable]])
-  : RDD[Writable] = {
-    val conf = new JobConf(localHconf)
-    if (tableDesc != null) {
-      Utilities.copyTableJobPropertiesToConf(tableDesc, conf)
-    }
-    new HiveInputFormat() {
-      def doPushFilters() {
-        pushFilters(conf, hiveOp)
-      }
-    }.doPushFilters()
-    FileInputFormat.setInputPaths(conf, path)
-    val bufferSize = System.getProperty("spark.buffer.size", "65536")
-    conf.set("io.file.buffer.size", bufferSize)
-
-    // Set s3/s3n credentials. Setting them in conf ensures the settings propagate
-    // from Spark's master all the way to Spark's slaves.
-    var s3varsSet = false
-    val s3vars = Seq("fs.s3n.awsAccessKeyId", "fs.s3n.awsSecretAccessKey",
-      "fs.s3.awsAccessKeyId", "fs.s3.awsSecretAccessKey").foreach { variableName =>
-      if (localHconf.get(variableName) != null) {
-        s3varsSet = true
-        conf.set(variableName, localHconf.get(variableName))
-      }
-    }
-
-    // If none of the s3 credentials are set in Hive conf, try use the environmental
-    // variables for credentials.
-    if (!s3varsSet) {
-      Utils.setAwsCredentials(conf)
-    }
-
-    // Choose the minimum number of splits. If mapred.map.tasks is set, use that unless
-    // it is smaller than what Spark suggests.
-    val minSplits = math.max(localHconf.getInt("mapred.map.tasks", 1), SharkEnv.sc.defaultMinSplits)
-    val rdd = SharkEnv.sc.hadoopRDD(conf, ifc, classOf[Writable], classOf[Writable], minSplits)
-
-    // Only take the value (skip the key) because Hive works only with values.
-    rdd.map(_._2)
-  }
 }
