@@ -127,44 +127,46 @@ class TableScanOperator extends TopOperator[HiveTableScanOperator] with HiveTopO
     val cacheMode = CacheType.fromString(
       tableDesc.getProperties().get("shark.cache").asInstanceOf[String])
     // TODO(harvey): Pruning Hive-partitioned, cached tables isn't supported yet.
-    if (cacheMode == CacheType.HEAP) {
-      // Table should be in Spark heap (block manager).
-      if (!SharkEnv.memoryMetadataManager.contains(tableKey)) {
-        logError("""|Table %s not found in block manager.
-                    |Are you trying to access a cached table from a Shark session other than
-                    |the one in which it was created?""".stripMargin.format(tableKey))
-        throw(new QueryExecutionException("Cached table not found"))
-      }
-      if (SharkEnv.memoryMetadataManager.isHivePartitioned(tableKey)) {
-        // Get the union of RDDs repesenting the selected Hive partition(s).
-        makeCachedPartitionRDD(tableKey, parts)
-      } else {
-        val rdd = SharkEnv.memoryMetadataManager.get(tableKey).get
-        logInfo("Loading table " + tableKey + " from Spark block manager")
-        createPrunedRdd(tableKey, rdd)
-      }
-    } else if (cacheMode == CacheType.TACHYON) {
-      // Table is in Tachyon.
-      if (!SharkEnv.tachyonUtil.tableExists(tableKey)) {
-        throw new TachyonException("Table " + tableKey + " does not exist in Tachyon")
-      }
-      logInfo("Loading table " + tableKey + " from Tachyon.")
-
-      var indexToStats: collection.Map[Int, TablePartitionStats] =
-        SharkEnv.memoryMetadataManager.getStats(tableKey).getOrElse(null)
-
-      if (indexToStats == null) {
-        val statsByteBuffer = SharkEnv.tachyonUtil.getTableMetadata(tableKey)
-        indexToStats = JavaSerializer.deserialize[collection.Map[Int, TablePartitionStats]](
-          statsByteBuffer.array())
-        logInfo("Loading table " + tableKey + " stats from Tachyon.")
-        SharkEnv.memoryMetadataManager.putStats(tableKey, indexToStats)
-      }
-      return createPrunedRdd(tableKey, SharkEnv.tachyonUtil.createRDD(tableKey))
-    } else {
-      // Table is a Hive table on HDFS (or other Hadoop storage).
-      return super.execute()
-    }
+    val returnRDD = 
+	    if (cacheMode == CacheType.HEAP) {
+	      // Table should be in Spark heap (block manager).
+	      if (!SharkEnv.memoryMetadataManager.contains(tableKey)) {
+	        logError("""|Table %s not found in block manager.
+	                    |Are you trying to access a cached table from a Shark session other than
+	                    |the one in which it was created?""".stripMargin.format(tableKey))
+	        throw(new QueryExecutionException("Cached table not found"))
+	      }
+	      if (SharkEnv.memoryMetadataManager.isHivePartitioned(tableKey)) {
+	        // Get the union of RDDs repesenting the selected Hive partition(s).
+	        makeCachedPartitionRDD(tableKey, parts)
+	      } else {
+	        val rdd = SharkEnv.memoryMetadataManager.get(tableKey).get
+	        logInfo("Loading table " + tableKey + " from Spark block manager")
+	        createPrunedRdd(tableKey, rdd)
+	      }
+	    } else if (cacheMode == CacheType.TACHYON) {
+	      // Table is in Tachyon.
+	      if (!SharkEnv.tachyonUtil.tableExists(tableKey)) {
+	        throw new TachyonException("Table " + tableKey + " does not exist in Tachyon")
+	      }
+	      logInfo("Loading table " + tableKey + " from Tachyon.")
+	
+	      var indexToStats: collection.Map[Int, TablePartitionStats] =
+	        SharkEnv.memoryMetadataManager.getStats(tableKey).getOrElse(null)
+	
+	      if (indexToStats == null) {
+	        val statsByteBuffer = SharkEnv.tachyonUtil.getTableMetadata(tableKey)
+	        indexToStats = JavaSerializer.deserialize[collection.Map[Int, TablePartitionStats]](
+	          statsByteBuffer.array())
+	        logInfo("Loading table " + tableKey + " stats from Tachyon.")
+	        SharkEnv.memoryMetadataManager.putStats(tableKey, indexToStats)
+	      }
+	      createPrunedRdd(tableKey, SharkEnv.tachyonUtil.createRDD(tableKey))
+	    } else {
+	      // Table is a Hive table on HDFS (or other Hadoop storage).
+	      super.execute()
+	    }
+    returnRDD.coalesce(SharkConfVars.getIntVar(localHconf, SharkConfVars.COALESCED_RATIO), false)
   }
 
   private def createPrunedRdd(tableKey: String, rdd: RDD[_]): RDD[_] = {

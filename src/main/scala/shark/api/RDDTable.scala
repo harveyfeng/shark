@@ -156,6 +156,13 @@ object RDDTable {
     Seq(m[T1], m[T2], m[T3], m[T4], m[T5], m[T6], m[T7], m[T8], m[T9], m[T10], m[T11],
         m[T12], m[T13], m[T14], m[T15], m[T16], m[T17], m[T18])
   }
+  
+    def getManifests[T1: M, T2: M, T3: M, T4: M]
+    (
+      dStream: DStream[(T1, T2, T3, T4)]
+    ) = {
+    Seq(m[T1], m[T2], m[T3], m[T4])
+  }
 
   // We need 19 for the Twitter API
   def apply[T1: M, T2: M, T3: M, T4: M, T5: M, T6: M, T7: M, T8: M, T9: M,

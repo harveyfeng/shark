@@ -25,9 +25,12 @@ import shark.{LogHelper, SharkEnv, SharkDriver}
 
 import org.apache.spark.streaming.{StreamingContext, Duration, Seconds}
 
-
+//
 /**
-* A driver to compile and execute streaming queries (i.e those using EVERY) for Shark.
+set shark.exec.mode = "shark"
+explain with a sql
+
+* * A driver to compile and execute streaming queries (i.e those using EVERY) for Shark.
 * The StreamingDriver executes the DStreamTask that starts the StreamingContext.
 * SharkStreamingDriver delegates normal queries to SharkDriver.
 */
@@ -60,11 +63,18 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
       context.setCmd(command)
       context.setTryCount(getTryCount())
 
+      println("----------compile cmd:" + command)
+        
+      
       // Hacky: Some additions for streaming...
       var sem: BaseSemanticAnalyzer = null
       if (command.toLowerCase.contains("create stream") && command.toLowerCase.contains("twitter_stream")
           && !command.toLowerCase.contains("from twitter_stream")) {
         SharkEnv.streams.createTwitterStream("twitter_stream", Duration(8000))
+        sem = new StreamingSemanticAnalyzer(conf)
+      }else if (command.toLowerCase.contains("create stream") && command.toLowerCase.contains("socket_stream")
+          && !command.toLowerCase.contains("from socket_stream")) {
+        SharkEnv.streams.createSocketStream("socket_stream", Duration(8000))
         sem = new StreamingSemanticAnalyzer(conf)
       } else if (command.toLowerCase.contains("show streams")) {
         sem = new StreamingSemanticAnalyzer(conf)
@@ -72,7 +82,8 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
         val cmdContext = context.asInstanceOf[StreamingCommandContext]
 
         command = StreamingDriver.preprocessCommand(command, cmdContext)
-
+        println("----------processed cmd:" + command)
+        
         context.setCmd(command)
 
         var tree: ASTNode = null
@@ -82,12 +93,20 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
           tree = ParseUtils.findRootNonNullToken((new ParseDriver()).parse(command, context))
           sem = SharkSemanticAnalyzerFactory.get(conf, tree)
         }
+        
+        try{
+        	println(tree.dump())  
+        }catch{
+          case e:Exception => Unit
+        }
+       
 
         // Do semantic analysis and plan generation
         val saHooks = SharkDriver.saHooksMethod.invoke(this, HiveConf.ConfVars.SEMANTIC_ANALYZER_HOOK,
           classOf[AbstractSemanticAnalyzerHook]).asInstanceOf[JavaList[AbstractSemanticAnalyzerHook]]
         // Note: this is never null, but can be empty.
         if (!saHooks.isEmpty) {
+          println("!saHooks.isEmpty")
           val hookCtx = new HiveSemanticAnalyzerHookContextImpl()
           hookCtx.setConf(conf)
           saHooks.foreach(_.preAnalyze(hookCtx, tree))
@@ -95,6 +114,7 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
           hookCtx.update(sem)
           saHooks.foreach(_.postAnalyze(hookCtx, sem.getRootTasks()))
         } else {
+          println("saHooks.isEmpty")
           sem.analyze(tree, context)
         }
 
@@ -104,7 +124,9 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
       }
 
       plan = new QueryPlan(command, sem, perfLogger.getStartTime(PerfLogger.DRIVER_RUN))
-
+      println("plan = new QueryPlan(command, sem, perfLogger.getStartTime(PerfLogger.DRIVER_RUN))")
+      println(plan.toString())
+      
       // Initialize FetchTask right here. Somehow Hive initializes it twice...
       if (sem.getFetchTask != null) {
         sem.getFetchTask.initialize(conf, plan, null)
@@ -112,6 +134,8 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
 
       // get the output schema
       schema = Driver.getSchema(sem, conf)
+      println("schema = Driver.getSchema(sem, conf)")
+      println(schema.toString())
 
       // skip the testing serialization code
 
@@ -164,6 +188,8 @@ object StreamingDriver {
 
   def preprocessCommand(cmd: String, cmdContext: StreamingCommandContext): String = {
     var command = cmd
+    
+    println("--------------------------StreamingDriver.preprocessCommand " + cmd)
 
     // If this is archiving a stream, INSERT INTO TABLE ... SELECT ... FROM ... BATCH ... SECONDS
     if (command.toLowerCase.contains("insert") &&

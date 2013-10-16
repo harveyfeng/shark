@@ -41,6 +41,9 @@ object SharkConfVars {
   val COLUMN_BUILDER_PARTITION_SIZE = new ConfVar("shark.column.partitionSize.mb",
     if (System.getenv("MASTER") == null) 1 else -1)
 
+  //Number of partition to coalesce in TableScanOperator
+  val COALESCED_RATIO = new ConfVar("shark.coalescedRatio", 10)
+  
   // Default storage level for cached tables.
   val STORAGE_LEVEL = new ConfVar("shark.cache.storageLevel", "MEMORY_AND_DISK")
 

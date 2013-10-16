@@ -108,6 +108,9 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
           super.analyzeInternal(ast)
           // SemanticAnalyzer's td is null. Get it from DDLWork.
           val td = rootTasks.head.getWork.asInstanceOf[DDLWork].getCreateTblDesc
+          
+          //-------------------
+          // also creates stream, but .........when is this called?
           analyzeCreateStream(td, cmdContext)
           return
         }
@@ -181,6 +184,8 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
           // windowedInputStreams.head
         }
 
+      //------------------------------------------
+      //streaming task creation, Dstreams
       genStreamingTask(cmdContext, executor, sparkTasks.head)
 
     } else {
@@ -282,6 +287,7 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
 
     // Force this file stream to execute every batchSeconds
     val cqTask = TaskFactory.get(new CQWork(cmdContext, null /* sparkTask */, newStream), conf)
+    println("=========creating CQTask @ analyzeCreateStream")
     assert(cqTask.getWork.cmdContext.isCreateStream)
   }
 
@@ -296,7 +302,9 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
 
     // Create the CQTask
     val cqTask = TaskFactory.get(new CQWork(cmdContext, sparkTask, executor), conf)
-
+    println("=========creating CQTask @ genStreamingTask")
+    
+    
     if (cmdContext.isDerivedStream) {
       // Tasks created by Shark:
       // SparkTask -> {MoveTask, DDLTask}
@@ -344,6 +352,7 @@ class StreamingSemanticAnalyzer(conf: HiveConf) extends SharkSemanticAnalyzer(co
   }
 
   def getExecutor(sourceDStreams: Seq[DStream[Any]], cmdContext: StreamingCommandContext): DStream[Any] = {
+    println("+++StreamingSementicAna:getExecutor")
     // Use the DStream with smallest slideDuration.
     var executor = sourceDStreams.sortWith(_.slideDuration < _.slideDuration).head
     // If the user provides a batch duration from tblProps, and there are > 1 sources, trust that

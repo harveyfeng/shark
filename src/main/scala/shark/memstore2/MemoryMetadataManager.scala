@@ -40,7 +40,7 @@ class MemoryMetadataManager {
   // TODO(harvey): Support stats for cached Hive-partitioned tables.
   private val _keyToStats: ConcurrentMap[String, collection.Map[Int, TablePartitionStats]] =
     new ConcurrentHashMap[String, collection.Map[Int, TablePartitionStats]]
-
+  
   def add(key: String, isHivePartitioned: Boolean, cacheMode: CacheType.CacheType) {
     val memoryTable = new MemoryTable(key.toLowerCase, isHivePartitioned)
     if (isHivePartitioned) {

@@ -139,6 +139,52 @@ class StreamManager {
     _inputStreams.add(streamName)
     return newStream
   }
+  
+  def createSocketStream(name:String, batchDuration:Duration) : DStream[_] = {
+    val ssc: StreamingContext = 
+      if (_durationToSsc.size == 0) {
+        createNewSsc(batchDuration)
+      } else {
+        _durationToSsc.values.toSeq(0)
+      }
+    val newStream = ssc.socketTextStream("localhost", 9999, StorageLevel.MEMORY_ONLY_SER)
+    
+    newStream.foreach(l => println(l.count()))
+    
+    val newTupleStream = newStream.map(line => {
+    		val ls = line.split(",")
+    		(ls(0).toDouble, ls(1).toDouble, ls(2).toDouble, ls(3).toDouble)
+    	})
+    	
+    val manifests = RDDTable.getManifests(newTupleStream)
+    SharkEnv.memoryMetadataManager.add(name, false, CacheType.HEAP)
+    val colNames = Seq("a","b","c","d")
+    
+    HiveUtils.createTableInHive(name, colNames, manifests)
+    
+    val newSharkStream = newTupleStream.transform { rddOfTuples =>
+        RDDTable(rddOfTuples).saveAsDStreamTable(name, colNames)
+      }
+    
+    _isTwitterInput.add(name)
+
+    // Force execute
+    newSharkStream.foreach{rdd =>
+      {SharkEnv.memoryMetadataManager.put(name, rdd)
+      println("SharkEnv.memoryMetadataManager.put(name, rdd)}")
+      println("+++Name:" +  name)
+      //println(rdd.collect().length)
+      }
+    }
+    
+    
+    _streamToSsc.put(newSharkStream, ssc)
+    val streamName = name.toLowerCase
+    _keyToDStream.put(streamName, newSharkStream)
+    _inputStreams.add(streamName)
+
+    return newSharkStream
+  }
 
   def createTwitterStream(name: String, batchDuration: Duration): DStream[_] = {
     def safeValue(a: Any) = Option(a)
@@ -222,7 +268,14 @@ class StreamManager {
 
     // Force execute
     newSharkStream.foreach{rdd =>
-      SharkEnv.memoryMetadataManager.put(name, rdd)}
+      {SharkEnv.memoryMetadataManager.put(name, rdd)
+      //println("SharkEnv.memoryMetadataManager.put(name, rdd)}")
+      //println("+++++++Name:" +  name)
+      //println(rdd.collect().length)
+      }
+    }
+    
+
 
     _streamToSsc.put(newSharkStream, ssc)
     val streamName = name.toLowerCase

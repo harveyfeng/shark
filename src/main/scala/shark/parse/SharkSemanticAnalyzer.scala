@@ -130,6 +130,7 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
     // up with later.
     val hiveSinkOp = genPlan(qb).asInstanceOf[org.apache.hadoop.hive.ql.exec.FileSinkOperator]
 
+    
     // Use reflection to invoke convertRowSchemaToViewSchema.
     _resSchema = SharkSemanticAnalyzer.convertRowSchemaToViewSchemaMethod.invoke(
       this, pctx.getOpParseCtx.get(hiveSinkOp).getRowResolver()
