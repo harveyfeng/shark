@@ -53,6 +53,8 @@ object SharkCliDriver {
 
   private var prompt  = "shark"
   private var prompt2 = "     " // when ';' is not yet seen.
+  private val streamingPrompt  = "streaming"
+  private val streamingPrompt2 = "         "
 
   installSignalHandler()
 

@@ -179,7 +179,8 @@ class TableScanOperator extends TopOperator[HiveTableScanOperator] with HiveTopO
 	      // Table is a Hive table on HDFS (or other Hadoop storage).
         return makeRDDFromHadoop()
 	    }
-    returnRDD.coalesce(SharkConfVars.getIntVar(localHconf, SharkConfVars.COALESCED_RATIO), false)
+    return returnRDD
+    // returnRDD.coalesce(SharkConfVars.getIntVar(localHConf, SharkConfVars.COALESCED_RATIO), false)
   }
 
   private def createPrunedRdd(tableKey: String, rdd: RDD[_]): RDD[_] = {
@@ -313,7 +314,7 @@ class TableScanOperator extends TopOperator[HiveTableScanOperator] with HiveTopO
         }.toArray
       val partKeyStr = MemoryMetadataManager.makeHivePartitionKeyStr(partColumns, partSpec)
       val hivePartitionRDD = SharkEnv.memoryMetadataManager.getHivePartition(tableKey, partKeyStr)
-      val serializedHconf = XmlSerializer.serialize(localHconf, localHconf)
+      val serializedHconf = XmlSerializer.serialize(localHConf, localHConf)
       
       hivePartitionRDD.get.mapPartitions { iter =>
         if (iter.hasNext) {

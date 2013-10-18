@@ -34,13 +34,13 @@ class SharkDDLSemanticAnalyzer(conf: HiveConf) extends DDLSemanticAnalyzer(conf)
         alterTableDropParts(ast)
       }
       case HiveParser.TOK_ALTERTABLE_RENAME => {
-        analyzeAlterTableRename(astNode)
+        analyzeAlterTableRename(ast)
       }
       case _ => Unit
     }
   }
 
-  def analyzeAlterTableAddParts(ast: ASTNode) {
+  private def analyzeAlterTableAddParts(ast: ASTNode) {
     val tableName = getTableName(ast)
     // Create a SparkDDLTask only if the table is cached.
     if (SharkEnv.memoryMetadataManager.contains(tableName)) {
@@ -48,13 +48,13 @@ class SharkDDLSemanticAnalyzer(conf: HiveConf) extends DDLSemanticAnalyzer(conf)
       // and DDLWorks that contain AddPartitionDesc objects.
       for (ddlTask <- rootTasks) {
         val addPartitionDesc = ddlTask.getWork.asInstanceOf[DDLWork].getAddPartitionDesc
-        val sparkDDLWork = new SparkDDLWork(addPartitionDesc)
-        ddlTask.addDependentTask(TaskFactory.get(sparkDDLWork, conf))
+        val sharkDDLWork = new SharkDDLWork(addPartitionDesc)
+        ddlTask.addDependentTask(TaskFactory.get(sharkDDLWork, conf))
       }
     }
   }
 
-  def alterTableDropParts(ast: ASTNode) {
+  private def alterTableDropParts(ast: ASTNode) {
     val tableName = getTableName(ast)
     // Create a SparkDDLTask only if the table is cached.
     if (SharkEnv.memoryMetadataManager.contains(tableName)) {
@@ -62,9 +62,11 @@ class SharkDDLSemanticAnalyzer(conf: HiveConf) extends DDLSemanticAnalyzer(conf)
       // and DDLWorks that contain AddPartitionDesc objects.
       for (ddlTask <- rootTasks) {
         val dropTableDesc = ddlTask.getWork.asInstanceOf[DDLWork].getDropTblDesc
-        val sparkDDLWork = new SparkDDLWork(dropTableDesc)
-        ddlTask.addDependentTask(TaskFactory.get(sparkDDLWork, conf))
+        val sharkDDLWork = new SharkDDLWork(dropTableDesc)
+        ddlTask.addDependentTask(TaskFactory.get(sharkDDLWork, conf))
       }
+    }
+  }
 
   private def analyzeAlterTableRename(astNode: ASTNode) {
     val oldTableName = getTableName(astNode)
@@ -82,6 +84,7 @@ class SharkDDLSemanticAnalyzer(conf: HiveConf) extends DDLSemanticAnalyzer(conf)
       val alterTableDesc = ddlWork.asInstanceOf[DDLWork].getAlterTblDesc
       val sharkDDLWork = new SharkDDLWork(alterTableDesc)
       ddlTask.addDependentTask(TaskFactory.get(sharkDDLWork, conf))
+    }
   }
 
   private def getTableName(node: ASTNode): String = {
