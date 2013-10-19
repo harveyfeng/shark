@@ -43,7 +43,7 @@ object SharkEnv extends LogHelper {
   def init(): SparkContext = {
     if (sc == null) {
       sc = new SparkContext(
-          if (System.getenv("MASTER") == null) "local" else System.getenv("MASTER"),
+          if (System.getenv("MASTER") == null) "local[4]" else System.getenv("MASTER"),
           "Shark::" + java.net.InetAddress.getLocalHost.getHostName,
           System.getenv("SPARK_HOME"),
           Nil,
