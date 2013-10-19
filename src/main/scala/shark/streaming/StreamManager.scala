@@ -37,7 +37,7 @@ class StreamManager {
   private val _intermediateStreams = new JavaHashSet[String]()
   private val _startedSscs = new JavaHashSet[StreamingContext]()
   
-  private val _isTwitterInput = new JavaHashSet[String]();
+  private val _isNetworkInput = new JavaHashSet[String]();
 
   // For testing/debugging
   private val _latestComputeTimes = new JavaHashMap[DStream[_], Time]()
@@ -148,12 +148,11 @@ class StreamManager {
         _durationToSsc.values.toSeq(0)
       }
     val newStream = ssc.socketTextStream("localhost", 9999, StorageLevel.MEMORY_ONLY_SER)
-    
-    newStream.foreach(l => println(l.count()))
+    //newStream.foreach(l => println(l.count()))
     
     val newTupleStream = newStream.map(line => {
     		val ls = line.split(",")
-    		(ls(0).toDouble, ls(1).toDouble, ls(2).toDouble, ls(3).toDouble)
+    		(ls(0).toInt, ls(1).toInt, ls(2).toInt, ls(3).toInt)
     	})
     	
     val manifests = RDDTable.getManifests(newTupleStream)
@@ -163,21 +162,21 @@ class StreamManager {
     HiveUtils.createTableInHive(name, colNames, manifests)
     
     val newSharkStream = newTupleStream.transform { rddOfTuples =>
-        RDDTable(rddOfTuples).saveAsDStreamTable(name, colNames)
+        val table = RDDTable(rddOfTuples).saveAsDStreamTable(name, colNames)
+        table
       }
     
-    _isTwitterInput.add(name)
+    _isNetworkInput.add(name)
 
     // Force execute
     newSharkStream.foreach{rdd =>
-      {SharkEnv.memoryMetadataManager.put(name, rdd)
+      SharkEnv.memoryMetadataManager.put(name, rdd)
       println("SharkEnv.memoryMetadataManager.put(name, rdd)}")
       println("+++Name:" +  name)
+      println("partitions: " + rdd.partitions.size)
       //println(rdd.collect().length)
-      }
     }
-    
-    
+
     _streamToSsc.put(newSharkStream, ssc)
     val streamName = name.toLowerCase
     _keyToDStream.put(streamName, newSharkStream)
@@ -264,7 +263,7 @@ class StreamManager {
         RDDTable(rddOfTuples).saveAsDStreamTable(name, colNames)
       }
     
-    _isTwitterInput.add(name)
+    _isNetworkInput.add(name)
 
     // Force execute
     newSharkStream.foreach{rdd =>
@@ -285,7 +284,7 @@ class StreamManager {
     return newSharkStream
   }
 
-  def isTwitterInput(name: String) = _isTwitterInput.contains(name)
+  def isNetworkInput(name: String) = _isNetworkInput.contains(name)
   
   private def createNewSsc(batchDuration: Duration): StreamingContext = {
     // Set the default cleaner delay to an hour if not already set.

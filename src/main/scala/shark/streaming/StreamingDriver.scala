@@ -62,15 +62,12 @@ class StreamingDriver(conf: HiveConf) extends SharkDriver(conf) with LogHelper {
       context = new StreamingCommandContext(conf, useTableRddSink)
       context.setCmd(command)
       context.setTryCount(getTryCount())
-
-      println("----------compile cmd:" + command)
-        
       
       // Hacky: Some additions for streaming...
       var sem: BaseSemanticAnalyzer = null
       if (command.toLowerCase.contains("create stream") && command.toLowerCase.contains("twitter_stream")
           && !command.toLowerCase.contains("from twitter_stream")) {
-        SharkEnv.streams.createTwitterStream("twitter_stream", Duration(8000))
+        SharkEnv.streams.createTwitterStream("twitter_stream", Duration(4000))
         sem = new StreamingSemanticAnalyzer(conf)
       }else if (command.toLowerCase.contains("create stream") && command.toLowerCase.contains("socket_stream")
           && !command.toLowerCase.contains("from socket_stream")) {

@@ -51,15 +51,15 @@ class StreamScanOperator extends TableScanOperator {
 
   @transient var inputRdd: RDD[_] = _
 
-  @BeanProperty var isTwitterInput: Boolean = _
+  @BeanProperty var isNetworkInput: Boolean = _
 
   @BeanProperty var separator: Byte = _
 
   // Initialization in StreamingTask, after TableScanOp is initialized
   def initializeInputStream() {
     super.initializeOnMaster()
-    isTwitterInput = SharkEnv.streams.isTwitterInput(tableName.toLowerCase)
-    if (!isTwitterInput) {
+    isNetworkInput = SharkEnv.streams.isNetworkInput(tableName.toLowerCase)
+    if (!isNetworkInput) {
       separator = inputObjectInspectors(0).asInstanceOf[LazySimpleStructObjectInspector].getSeparator
     }
     // Get the inputDStream. We must use WindowedDStream, since it
@@ -90,20 +90,25 @@ class StreamScanOperator extends TableScanOperator {
     SharkEnv.streams.updateComputeTime(inputDStream, Time(currentComputeTime))
     
     if (SharkEnv.streams.hasSscStarted(inputDStream)) {
-      val inputRdds = inputDStream.slice(Time(currentComputeTime) - inputDStream.slideDuration, Time(currentComputeTime)).asInstanceOf[Seq[RDD[Any]]]
+      val inputRdds = inputDStream.slice(Time(
+        currentComputeTime) - inputDStream.slideDuration, Time(currentComputeTime))
+          .asInstanceOf[Seq[RDD[Any]]]
       inputRdd = SharkEnv.sc.union(inputRdds)
     }
-    if (isTwitterInput) return inputRdd.mapPartitions { part =>
-      if (part.isInstanceOf[TablePartition]) {
-        part.asInstanceOf[TablePartition].iterator
-      } else {
-        part.next.asInstanceOf[TablePartition].iterator
+    if (isNetworkInput) {
+      val toReturn = inputRdd.mapPartitions { part =>
+        if (part.isInstanceOf[TablePartition]) {
+          part.asInstanceOf[TablePartition].iterator
+        } else {
+          part.next.asInstanceOf[TablePartition].iterator
+        }
       }
+      return toReturn
     }
 
     // Delegate partition processing to TableScanOperator once we have the duration RDDs.
     // Note: op.processPartition => deserializer.deserialize(v)
-    val rddPreprocessed = if (SharkEnv.streams.isInputStream(tableName) && !isTwitterInput) preprocessRdd(inputRdd) else inputRdd
+    val rddPreprocessed = if (SharkEnv.streams.isInputStream(tableName) && !isNetworkInput) preprocessRdd(inputRdd) else inputRdd
 
     val formattedRDD = Operator.executeProcessPartition(this, rddPreprocessed)
 
@@ -112,7 +117,7 @@ class StreamScanOperator extends TableScanOperator {
 
   // Append the compute time to the tuple.
   override def preprocessRdd(rdd: RDD[_]): RDD[_] = {
-    if (isTwitterInput) {
+    if (isNetworkInput) {
       // No need to do anything. The last column should have the time.
       return rdd
     }

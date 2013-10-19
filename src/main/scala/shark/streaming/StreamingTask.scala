@@ -167,7 +167,8 @@ class CQTask extends org.apache.hadoop.hive.ql.exec.Task[CQWork]
       //create stream tt as select * from twitter_stream goes here
       val transformed = executor.transform(cq).persist(StorageLevel.MEMORY_ONLY_SER)
       SharkEnv.streams.putIntermediateStream(cmdContext.tableName, transformed, executor)
-      transformed.foreach(rdd => println(rdd.collect().asInstanceOf[Seq[shark.api.Row]].map(row => row.getString("user_name")) ))
+      transformed.foreach(_ => Unit)
+      //transformed.foreach(rdd => println(rdd.collect().asInstanceOf[Seq[shark.api.Row]].map(row => row.getString("user_name")) ))
     } else if (cmdContext.isArchiveStream) {
       println("++++++++++cmdContext.isArchiveStream")
       val tmp = 0
