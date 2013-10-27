@@ -40,7 +40,7 @@ import org.apache.spark.storage.StorageLevel
 
 import shark.{CachedTableRecovery, LogHelper, SharkConfVars, SharkEnv,  Utils}
 import shark.execution.{HiveOperator, Operator, OperatorFactory, RDDUtils, ReduceSinkOperator,
-  SparkDDLWork, SparkWork, TerminalOperator}
+  SharkDDLWork, SparkWork, TerminalOperator}
 import shark.memstore2.{CacheType, ColumnarSerDe, MemoryMetadataManager}
 
 
@@ -94,7 +94,7 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
           // HiveParer.HIVE_QUERY.
           child = queryStmtASTNode
           // Hive's super.analyzeInternal() might generate MapReduce tasks. Avoid executing those
-          // tasks by reset()-ing some Hive SemanticAnalyzer state after doPhase1().
+          // tasks by reset()-ing some Hive SemanticAnalyzer state after doPhase1() is called below.
           shouldReset = true
         }
         case None => {
@@ -107,7 +107,7 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
     }
 
     // Invariant: At this point, the command will execute a query (i.e., its AST contains a
-    //            HiveParser.TOK_QUERY node).
+    //     HiveParser.TOK_QUERY node).
 
     // Continue analyzing from the child ASTNode.
     if (!doPhase1(child, qb, initPhase1Ctx())) {
@@ -165,11 +165,12 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
           } else {
             // Otherwise, check if we are inserting into a table that was cached.
             val cachedTableName = tableName.split('.')(1) // Ignore the database name
-            if (SharkEnv.memoryMetadataManager.contains(cachedTableName)) {
+            if (SharkEnv.memoryMetadataManager.containsTable(cachedTableName)) {
               if (hiveSinkOps.size == 1) {
                 // If useUnionRDD is false, the sink op is for INSERT OVERWRITE.
                 val useUnionRDD = qbParseInfo.isInsertIntoTable(cachedTableName)
-                val cacheMode = SharkEnv.memoryMetadataManager.getCacheMode(cachedTableName)
+                val table = SharkEnv.memoryMetadataManager.getTable(cachedTableName).get
+                val cacheMode = table.cacheMode
                 var hivePartitionKey = new String
                 if (SharkEnv.memoryMetadataManager.isHivePartitioned(cachedTableName)) {
                   if (cacheMode == CacheType.TACHYON) {
@@ -178,11 +179,11 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
                   }
                   hivePartitionKey = SharkSemanticAnalyzer.getHivePartitionKey(qb)
                 }
-                val storageLevel = SharkEnv.memoryMetadataManager.getStorageLevel(cachedTableName)
+                val preferredStorageLevel = table.preferredStorageLevel
                 OperatorFactory.createSharkMemoryStoreOutputPlan(
                   hiveSinkOp,
                   cachedTableName,
-                  storageLevel,
+                  preferredStorageLevel,
                   _resSchema.size,  /* numColumns */
                   hivePartitionKey,
                   cacheMode,
@@ -202,13 +203,13 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
         Seq {
           if (qb.isCTAS && qb.getTableDesc != null &&
               CacheType.shouldCache(qb.getCacheModeForCreateTable())) {
-            val storageLevel = MemoryMetadataManager.getStorageLevelFromString(
+            val preferredStorageLevel = MemoryMetadataManager.getStorageLevelFromString(
               qb.getTableDesc().getTblProps.get("shark.cache.storageLevel"))
             qb.getTableDesc().getTblProps().put(CachedTableRecovery.QUERY_STRING, ctx.getCmd())
             OperatorFactory.createSharkMemoryStoreOutputPlan(
               hiveSinkOps.head,
               qb.getTableDesc.getTableName,
-              storageLevel,
+              preferredStorageLevel,
               _resSchema.size,  /* numColumns */
               new String,  /* hivePartitionKey */
               qb.getCacheModeForCreateTable,
@@ -351,6 +352,7 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
     //               should have everything (e.g. isCTAS(), partCols). Note that the QB might not be
     //               accessible from getParseContext(), since the SemanticAnalyzer#analyzeInternal()
     //               doesn't set (this.qb = qb) for a non-CTAS.
+    // True if the command is a CREATE TABLE, but not a CTAS.
     var isRegularCreateTable = true
     var isHivePartitioned = false
 
@@ -364,25 +366,23 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
       }
     }
 
-    // Invariant: At this point, the command is either a CTAS or a CREATE TABLE.
     var ddlTasks: Seq[DDLTask] = Nil
-    val createTableDesc =
-      if (isRegularCreateTable) {
-        // Unfortunately, we have to comb the root tasks because for CREATE TABLE,
-        // SemanticAnalyzer#analyzeCreateTable() does't set the CreateTableDesc in its QB.
-        ddlTasks = rootTasks.filter(_.isInstanceOf[DDLTask]).asInstanceOf[Seq[DDLTask]]
-        if (ddlTasks.isEmpty) null else ddlTasks.head.getWork.getCreateTblDesc
-      }
-      else {
-        getParseContext.getQB.getTableDesc
-      }
+    val createTableDesc = if (isRegularCreateTable) {
+      // Unfortunately, we have to comb the root tasks because for CREATE TABLE,
+      // SemanticAnalyzer#analyzeCreateTable() does't set the CreateTableDesc in its QB.
+      ddlTasks = rootTasks.filter(_.isInstanceOf[DDLTask]).asInstanceOf[Seq[DDLTask]]
+      if (ddlTasks.isEmpty) null else ddlTasks.head.getWork.getCreateTblDesc
+    } else {
+      getParseContext.getQB.getTableDesc
+    }
 
-    // Can be NULL if there is an IF NOTE EXISTS condition and the table already exists.
+    // 'createTableDesc' is NULL if there is an IF NOT EXISTS condition and the target table
+    // already exists.
     if (createTableDesc != null) {
       val tableName = createTableDesc.getTableName
       val checkTableName = SharkConfVars.getBoolVar(conf, SharkConfVars.CHECK_TABLENAME_FLAG)
-      // The CreateTableDesc's table properties are Java Maps, but the TableDesc's table properties,
-      // which are used during execution, are Java Properties.
+      // Note that the CreateTableDesc's table properties are Java Maps, but the TableDesc's table
+      // properties, which are used during execution, are Java Properties.
       val createTableProperties: JavaMap[String, String] = createTableDesc.getTblProps()
 
       // There are two cases that will enable caching:
@@ -405,17 +405,19 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
         createTableDesc.setSerName(classOf[ColumnarSerDe].getName)
       }
 
-      // For CTAS, the SparkTask's MemoryStoreSinkOperator will create the table and the Hive
-      // DDLTask will be a dependent of the SparkTask. SparkTasks are created in genMapRedTasks().
+      // For CTAS ('isRegularCreateTable' is false), the MemoryStoreSinkOperator creates a new
+      // table metadata entry in the MemoryMetadataManager. The SparkTask that encloses the
+      // MemoryStoreSinkOperator will have a child Hive DDLTask, which creates a new table metadata
+      // entry in the Hive metastore. See genMapRedTasks() for SparkTask creation.
       if (isRegularCreateTable && shouldCache) {
         // In Hive, a CREATE TABLE command is handled by a DDLTask, created by
-        // SemanticAnalyzer#analyzeCreateTable(). The DDL tasks' execution succeeds only if the
-        // CREATE TABLE is valid. So, hook a SharkDDLTask as a dependent of the Hive DDLTask so that
-        // Shark metadata is updated only if the Hive task execution is successful.
+        // SemanticAnalyzer#analyzeCreateTable(), in 'rootTasks'. The DDL tasks' execution succeeds
+        // only if the CREATE TABLE is valid. So, hook a SharkDDLTask as a child of the Hive DDLTask
+        // so that Shark metadata is updated only if the Hive task execution is successful.
         val hiveDDLTask = ddlTasks.head;
-        val sparkDDLWork = new SparkDDLWork(createTableDesc)
-        sparkDDLWork.cacheMode = cacheMode
-        hiveDDLTask.addDependentTask(TaskFactory.get(sparkDDLWork, conf))
+        val sharkDDLWork = new SharkDDLWork(createTableDesc)
+        sharkDDLWork.cacheMode = cacheMode
+        hiveDDLTask.addDependentTask(TaskFactory.get(sharkDDLWork, conf))
       }
 
       queryBlock.setCacheModeForCreateTable(cacheMode)

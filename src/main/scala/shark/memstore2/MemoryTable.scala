@@ -17,67 +17,27 @@
 
 package shark.memstore2
 
-import java.util.{HashMap => JavaHashMap}
-
-import scala.collection.JavaConversions._
-import scala.collection.mutable.Map
+import shark.execution.RDDUtils
 
 import org.apache.spark.rdd.RDD
+import org.apache.spark.storage.StorageLevel
 
 
 /**
- * A container for table metadata specific to Shark and Spark. Currently, this is a lightweight
- * wrapper around either an RDD or multiple RDDs if the Shark table is Hive-partitioned.
- * Note that a Hive-partition of a table is different from an RDD partition. Each Hive-partition
- * is stored as a subdirectory of the table subdirectory in the warehouse directory
- * (e.g. /user/hive/warehouse). So, every Hive-Partition is loaded into Shark as an RDD.
- *
- * TODO(harvey): It could be useful to make MemoryTable a parent class, and have other table types,
- *               such as HivePartitionedTable or TachyonTable, subclass it. For now, there isn't
- *               too much metadata to track, so it should be okay to have a single MemoryTable.
+ * A metadata container for a table in Shark that's backed by an RDD.
  */
 private[shark]
 class MemoryTable(
-    val tableName: String,
-    val isHivePartitioned: Boolean) {
+    tableName: String,
+    cacheMode: CacheType.CacheType,
+    preferredStorageLevel: StorageLevel)
+  extends Table(tableName, cacheMode, preferredStorageLevel) {
 
-  // Should only be used if the table is not Hive-partitioned.
-  private var _tableRDD: RDD[_] = _
+  // RDD that contains the contents of this table.
+  private var _tableRDD: RDD[TablePartition] = _
 
-  // Should only be used if a cached table is Hive-partitioned.
-  private var _keyToHivePartitions: Map[String, RDD[_]] = _
+  def tableRDD: RDD[TablePartition] = _tableRDD
 
-  // CacheMode for the table.
-  // This is common to all Hive-partitions (if applicable).
-  var cacheMode: CacheType.CacheType = _
+  def tableRDD_= (rdd: RDD[TablePartition]) = _tableRDD = rdd
 
-  def tableRDD: RDD[_] = {
-    assert (
-      !isHivePartitioned,
-      "Table " + tableName + " is Hive-partitioned. Use MemoryTableDesc::hivePartitionRDDs() " +
-      "to get RDDs corresponding to partition columns"
-    )
-    return _tableRDD
-  }
-
-  def tableRDD_= (value: RDD[_]) {
-    assert(
-      !isHivePartitioned,
-      "Table " + tableName + " is Hive-partitioned. Pass in a map of <partition key, RDD> pairs " +
-      "to the 'keyToHivePartitions =' setter."
-    )
-    _tableRDD = value
-  }
-
-  def keyToHivePartitions: Map[String, RDD[_]] = {
-    assert(isHivePartitioned,
-           "Table " + tableName + " is not Hive-partitioned. Use tableRDD() to get its RDD.")
-    _keyToHivePartitions
-  }
-
-  def keyToHivePartitions_= (value: Map[String, RDD[_]]) {
-    assert(isHivePartitioned,
-       "Table " + tableName + " is not Hive-partitioned. Use 'tableRDD =' to set the RDD.")
-    _keyToHivePartitions = value
-  }
 }
