@@ -147,6 +147,7 @@ class StreamManager {
       } else {
         _durationToSsc.values.toSeq(0)
       }
+    val storageLevel = StorageLevel.MEMORY_ONLY_SER
     val newStream = ssc.socketTextStream("localhost", 9999, StorageLevel.MEMORY_ONLY_SER)
     //newStream.foreach(l => println(l.count()))
     
@@ -156,7 +157,7 @@ class StreamManager {
     	})
     	
     val manifests = RDDTable.getManifests(newTupleStream)
-    SharkEnv.memoryMetadataManager.add(name, false, CacheType.HEAP)
+    SharkEnv.memoryMetadataManager.createMemoryTable(name, CacheType.HEAP, storageLevel)
     val colNames = Seq("a","b","c","d")
     
     HiveUtils.createTableInHive(name, colNames, manifests)
@@ -170,7 +171,8 @@ class StreamManager {
 
     // Force execute
     newSharkStream.foreach{rdd =>
-      SharkEnv.memoryMetadataManager.put(name, rdd)
+      val table = SharkEnv.memoryMetadataManager.getMemoryTable(name)
+      table.foreach(_.tableRDD = rdd)
       println("SharkEnv.memoryMetadataManager.put(name, rdd)}")
       println("+++Name:" +  name)
       println("partitions: " + rdd.partitions.size)
@@ -250,9 +252,10 @@ class StreamManager {
     )
     
     val manifests = RDDTable.getManifests(newTupleStream)
-   
-    SharkEnv.memoryMetadataManager.add(name, false, CacheType.HEAP)
-    
+
+    SharkEnv.memoryMetadataManager.createMemoryTable(
+      name, CacheType.HEAP, StorageLevel.MEMORY_ONLY_SER)
+
     val colNames = fields.map{case (f, colName, hiveType) => colName}
 
     HiveUtils.createTableInHive(
@@ -266,15 +269,13 @@ class StreamManager {
     _isNetworkInput.add(name)
 
     // Force execute
-    newSharkStream.foreach{rdd =>
-      {SharkEnv.memoryMetadataManager.put(name, rdd)
+    newSharkStream.foreach { rdd =>
+      val table = SharkEnv.memoryMetadataManager.getMemoryTable(name)
+      table.foreach(_.tableRDD = rdd)
       //println("SharkEnv.memoryMetadataManager.put(name, rdd)}")
       //println("+++++++Name:" +  name)
       //println(rdd.collect().length)
-      }
     }
-    
-
 
     _streamToSsc.put(newSharkStream, ssc)
     val streamName = name.toLowerCase

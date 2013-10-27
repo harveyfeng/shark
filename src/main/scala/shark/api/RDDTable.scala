@@ -46,22 +46,11 @@ object RDDTable {
         m[T12], m[T13], m[T14], m[T15], m[T16], m[T17], m[T18])
   }
   
-    def getManifests[T1: M, T2: M, T3: M, T4: M]
+  def getManifests[T1: M, T2: M, T3: M, T4: M]
     (
       dStream: DStream[(T1, T2, T3, T4)]
     ) = {
     Seq(m[T1], m[T2], m[T3], m[T4])
-  }
-
-  // We need 19 for the Twitter API
-  def apply[T1: M, T2: M, T3: M, T4: M, T5: M, T6: M, T7: M, T8: M, T9: M,
-            T10: M, T11: M, T12: M, T13: M, T14: M, T15: M, T16: M, T17: M, T18: M]
-    (
-      rdd: RDD[(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17, T18)]
-    ) = {
-    new RDDTableFunctions(rdd.asInstanceOf[RDD[Product]],
-      Seq(m[T1], m[T2], m[T3], m[T4], m[T5], m[T6], m[T7], m[T8], m[T9], m[T10], m[T11],
-          m[T12], m[T13], m[T14], m[T15], m[T16], m[T17], m[T18]))
   }
 
   def apply[T1: M, T2: M](rdd: RDD[(T1, T2)]) = {

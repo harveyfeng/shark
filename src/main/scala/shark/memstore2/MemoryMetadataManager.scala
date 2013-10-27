@@ -96,19 +96,6 @@ class MemoryMetadataManager {
     tableOpt.asInstanceOf[Option[MemoryTable]]
   }
 
-  def getHivePartition(key: String, partitionColumnValues: String): Option[RDD[_]] = {
-    val keyToHivePartitions = _keyToMemoryTable(key.toLowerCase).keyToHivePartitions
-    keyToHivePartitions.get(partitionColumnValues)
-  }
-
-  def putStats(key: String, stats: collection.Map[Int, TablePartitionStats]) {
-    _keyToStats.put(key.toLowerCase, stats)
-  }
-
-  def getStats(key: String): Option[collection.Map[Int, TablePartitionStats]] = {
-    _keyToStats.get(key.toLowerCase)
-  }
-
   def getPartitionedTable(tableName: String): Option[PartitionedMemoryTable] = {
     val tableOpt = _keyToTable.get(tableName.toLowerCase)
     if (tableOpt.isDefined) {
