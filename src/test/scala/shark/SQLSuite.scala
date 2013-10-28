@@ -813,7 +813,4 @@ class SQLSuite extends FunSuite with BeforeAndAfterAll {
     val e = intercept[QueryExecutionException] { sc.sql2rdd("asdfasdfasdfasdf") }
     e.getMessage.contains("semantic")
   }
-
-
-  
 }
