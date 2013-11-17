@@ -90,7 +90,7 @@ object OperatorFactory extends LogHelper {
     val fileSinkDesc = hiveOp.getConf
     val tableDesc = fileSinkDesc.getTableInfo()
     val serDe = Class.forName(diskSerDe).asInstanceOf[Class[Deserializer]]
-    tableDesc.setDeserializerClass(serDe)
+    //tableDesc.setDeserializerClass(serDe)
     terminalOp
   }
 

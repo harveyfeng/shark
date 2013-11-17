@@ -220,7 +220,7 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
                         partitionedTable.diskSerDe)
                     }
                   }
-                  OperatorFactory.createUnifiedViewFileOutputPlan(hiveSinkOp, diskSerDe)
+                  OperatorFactory.createSharkFileOutputPlan(hiveSinkOp)
                 } else {
                   OperatorFactory.createSharkMemoryStoreOutputPlan(
                     hiveSinkOp,
@@ -494,8 +494,8 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
       // 1) Table name includes "_cached" or "_tachyon".
       // 2) The "shark.cache" table property is "true", or the string representation of a supported
       //    cache mode (heap, Tachyon).
-      var cacheMode = CacheType.fromString(createTableProperties.get(
-        SharkTblProperties.CACHE_FLAG.varname))
+      //var cacheMode = CacheType.fromString(createTableProperties.get(SharkTblProperties.CACHE_FLAG.varname))
+      var cacheMode = CacheType.fromString("true")
       // Continue planning based on the 'cacheMode' read.
       if (cacheMode == CacheType.HEAP || (checkTableName && tableName.endsWith("_cached"))) {
         cacheMode = CacheType.HEAP

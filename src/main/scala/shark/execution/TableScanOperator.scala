@@ -41,6 +41,9 @@ import shark.memstore2.{CacheType, MemoryMetadataManager, TablePartition, TableP
 import shark.util.HiveUtils
 
 
+import shark.memstore2.ColumnarSerDe
+
+
 /**
  * The TableScanOperator is used for scanning any type of Shark or Hive table.
  */
@@ -74,13 +77,23 @@ class TableScanOperator extends TopOperator[TableScanDesc] {
   }
 
   override def outputObjectInspector() = {
+    val tableName = table.getTableName
+    val databaseName = table.getDbName
     if (parts == null) {
-      val serializer = tableDesc.getDeserializerClass().newInstance()
+      val serializer = if (SharkEnv.memoryMetadataManager.getTable(databaseName, tableName).isDefined) {
+        new ColumnarSerDe()
+      } else {
+        tableDesc.getDeserializerClass().newInstance()
+      }
       serializer.initialize(hconf, tableDesc.getProperties)
       serializer.getObjectInspector()
     } else {
       val partProps = firstConfPartDesc.getProperties()
-      val partSerDe = firstConfPartDesc.getDeserializerClass().newInstance()
+      val partSerDe = if (SharkEnv.memoryMetadataManager.getTable(databaseName, tableName).isDefined) {
+          new ColumnarSerDe()
+        } else {
+          firstConfPartDesc.getDeserializerClass().newInstance()
+        }
       partSerDe.initialize(hconf, partProps)
       HiveUtils.makeUnionOIForPartitionedTable(partProps, partSerDe)
     }

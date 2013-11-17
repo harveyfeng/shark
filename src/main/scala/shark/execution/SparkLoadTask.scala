@@ -258,12 +258,14 @@ class SparkLoadTask extends HiveTask[SparkLoadWork] with Serializable with LogHe
         // Before setting the table's SerDe property to ColumnarSerDe, record the SerDe used
         // to deserialize rows from disk so that it can be used for subsequenct update operations.
         newMemoryTable.diskSerDe = hiveTable.getDeserializer.getClass.getName
+        /*
         HiveUtils.alterSerdeInHive(
           databaseName,
           tableName,
           partitionSpecOpt = None,
           classOf[ColumnarSerDe].getName,
           conf)
+        */
         newMemoryTable
       }
       case _ => {
@@ -347,12 +349,14 @@ class SparkLoadTask extends HiveTask[SparkLoadWork] with Serializable with LogHe
           work.reloadOnRestart,
           hiveTable.getParameters)
         newPartitionedTable.diskSerDe = hiveTable.getDeserializer.getClass.getName
+        /*
         HiveUtils.alterSerdeInHive(
           databaseName,
           tableName,
           Some(partSpecs),
           classOf[ColumnarSerDe].getName,
           conf)
+        */
         newPartitionedTable
       }
       case _ => {
