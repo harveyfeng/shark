@@ -30,7 +30,7 @@ import org.apache.hadoop.hive.ql.plan.api.StageType
 import org.apache.spark.rdd.EmptyRDD
 
 import shark.{LogHelper, SharkEnv}
-import shark.memstore2.{CacheType, MemoryMetadataManager, PartitionedMemoryTable}
+import shark.memstore2.{CacheType, MemoryTable, MemoryMetadataManager, PartitionedMemoryTable}
 import shark.memstore2.{SharkTblProperties, TablePartitionStats}
 import shark.util.HiveUtils
 
@@ -143,22 +143,33 @@ private[shark] class SharkDDLTask extends HiveTask[SharkDDLWork]
       dropTableDesc: DropTableDesc) {
     val dbName = hiveMetadataDb.getCurrentDatabase()
     val tableName = dropTableDesc.getTableName
-    val hiveTable = db.getTable(tableName, false /* throwException */);
+    val hiveTable = db.getTable(tableName, false /* throwException */)
+    val sharkTable = SharkEnv.memoryMetadataManager.getTable(dbName, tableName).get
     val partSpecs: JavaList[PartitionSpec] = dropTableDesc.getPartSpecs
 
-    if (partSpecs == null) {
-      // The command is a true DROP TABLE.
-      SharkEnv.dropTable(dbName, tableName)
-    } else {
-      // The command is an ALTER TABLE DROP PARTITION
-      val partitionedTable = getPartitionedTableWithAssertions(dbName, tableName)
-      // Find the set of partition column values that specifies the partition being dropped.
-      val partCols: Seq[String] = hiveTable.getPartCols.map(_.getName)
-      for (partSpec <- partSpecs) {
-        val partColToValue: JavaMap[String, String] = partSpec.getPartSpecWithoutOperator
-        // String format for partition key: 'col1=value1/col2=value2/...'
-        val partKeyStr = MemoryMetadataManager.makeHivePartitionKeyStr(partCols, partColToValue)
-        partitionedTable.removePartition(partKeyStr)
+    sharkTable match {
+      case memoryTable: MemoryTable => {
+        // Command is a true DROP TABLE.
+        assert(partSpecs == null)
+        memoryTable.cacheMode match {
+          case CacheType.TACHYON => {
+
+          }
+          case _ => SharkEnv.memoryMetadataManager.removeTable(dbName, tableName)
+        }
+      }
+      case partitionedMemoryTable: PartitionedMemoryTable => {
+        assert(partSpecs != null)
+        // The command is an ALTER TABLE DROP PARTITION.
+        // Find the set of partition column values that specifies the partition being dropped. The
+        // CachePolicy's eviction function should handle RDD unpersisting.
+        val partCols: Seq[String] = hiveTable.getPartCols.map(_.getName)
+        for (partSpec <- partSpecs) {
+          val partColToValue: JavaMap[String, String] = partSpec.getPartSpecWithoutOperator
+          // String format for partition key: 'col1=value1/col2=value2/...'
+          val partKeyStr = MemoryMetadataManager.makeHivePartitionKeyStr(partCols, partColToValue)
+          partitionedMemoryTable.removePartition(partKeyStr)
+        }
       }
     }
   }

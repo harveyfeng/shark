@@ -117,18 +117,11 @@ class TableScanOperator extends TopOperator[TableScanDesc] {
       tableDesc.getProperties().get("shark.cache").asInstanceOf[String])
     // TODO(harvey): Pruning Hive-partitioned, cached tables isn't supported yet.
     if (isInMemoryTableScan) {
-      assert (cacheMode == CacheType.MEMORY || cacheMode == CacheType.MEMORY_ONLY,
-        "Table %s.%s is in Shark metastore, but its cacheMode (%s) indicates otherwise".
-          format(databaseName, tableName, cacheMode))
-      val tableReader = new HeapTableReader(tableDesc)
-      if (table.isPartitioned) {
-        return tableReader.makeRDDForPartitionedTable(parts)
+      val tableReader = if (cacheMode == CacheType.TACHYON) {
+        new TachyonTableReader(tableDesc)
       } else {
-        val tableRdd = tableReader.makeRDDForTable(table)
-        return createPrunedRdd(databaseName, tableName, tableRdd)
+        new HeapTableReader(tableDesc)
       }
-    } else if (cacheMode == CacheType.TACHYON) {
-      val tableReader = new TachyonTableReader(tableDesc)
       if (table.isPartitioned) {
         return tableReader.makeRDDForPartitionedTable(parts)
       } else {
@@ -136,6 +129,9 @@ class TableScanOperator extends TopOperator[TableScanDesc] {
         return createPrunedRdd(databaseName, tableName, tableRdd)
       }
     } else {
+      assert (cacheMode == CacheType.NONE,
+        """Loading table %s.%s from Hadoop, but its cacheMode (%s) indicates that it should be
+          located somewhere else""".format(databaseName, tableName, cacheMode))
       // Table is a Hive table on HDFS (or other Hadoop storage).
       return makeRDDFromHadoop()
     }

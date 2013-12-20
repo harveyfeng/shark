@@ -46,7 +46,7 @@ class MemoryStoreSinkOperator extends TerminalOperator {
   // If true, columnar storage will use compression.
   @BeanProperty var shouldCompress: Boolean = _
 
-  // For CTAS, this is the name of the table that is created. For INSERTS, this is the name of
+  // For CTAS, this is the name of the table that is created. For INSERTS, this is the name of*
   // the table that is modified.
   @BeanProperty var tableName: String = _
 
@@ -87,11 +87,14 @@ class MemoryStoreSinkOperator extends TerminalOperator {
 
     val statsAcc = SharkEnv.sc.accumulableCollection(ArrayBuffer[(Int, TablePartitionStats)]())
     val op = OperatorSerializationWrapper(this)
+    val isHivePartitioned = SharkEnv.memoryMetadataManager.isHivePartitioned(
+      databaseName, tableName)
+    val tableKey = MemoryMetadataManager.makeTableKey(databaseName, tableName)
 
     val tachyonWriter: TachyonTableWriter =
       if (cacheMode == CacheType.TACHYON) {
         // Use an additional row to store metadata (e.g. number of rows in each partition).
-        SharkEnv.tachyonUtil.createTableWriter(tableName, numColumns + 1)
+        SharkEnv.tachyonUtil.createTableWriter(tableKey, Option(hivePartitionKey), numColumns + 1)
       } else {
         null
       }
@@ -119,9 +122,6 @@ class MemoryStoreSinkOperator extends TerminalOperator {
         Iterator(builder.asInstanceOf[TablePartitionBuilder].build)
       }
     }
-
-    val isHivePartitioned = SharkEnv.memoryMetadataManager.isHivePartitioned(
-      databaseName, tableName)
 
     // If true, a UnionRDD will be used to combine the RDD that contains the query output with the
     // previous RDD, which is fetched using 'tableName' or - if the table is Hive-partitioned - a
