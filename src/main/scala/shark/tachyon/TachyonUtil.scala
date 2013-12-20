@@ -25,24 +25,27 @@ import org.apache.spark.rdd.RDD
 import shark.memstore2.TablePartition
 
 
-
 /**
  * An abstraction for Tachyon APIs. Specific implementations are provided
  * in the tachyon_enabled and tachyon_disabled folder so we can compile Shark
  * even without Tachyon jars.
  */
 abstract class TachyonUtil {
+
   def pushDownColumnPruning(rdd: RDD[_], columnUsed: BitSet): Boolean
 
   def tachyonEnabled(): Boolean
 
-  def tableExists(tableName: String): Boolean
+  def tableExists(tableKey: String, hivePartitionKey: Option[String]): Boolean
 
-  def dropTable(tableName: String): Boolean
+  def dropTable(tableKey: String, hivePartitionKey: Option[String]): Boolean
 
-  def getTableMetadata(tableName: String): ByteBuffer
+  def getTableMetadata(tableKey: String, hivePartitionKey: Option[String]): ByteBuffer
 
-  def createRDD(tableName: String): RDD[TablePartition]
+  def createRDD(tableKey: String, hivePartitionKey: Option[String]): RDD[TablePartition]
 
-  def createTableWriter(tableName: String, numColumns: Int): TachyonTableWriter
+  def createTableWriter(
+  	  tableKey: String,
+  	  hivePartitionKey: Option[String],
+  	  numColumns: Int): TachyonTableWriter
 }

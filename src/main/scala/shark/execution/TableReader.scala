@@ -27,7 +27,7 @@ import org.apache.spark.rdd.{EmptyRDD, RDD, UnionRDD}
 import shark.{LogHelper, SharkEnv}
 import shark.api.QueryExecutionException
 import shark.execution.serialization.JavaSerializer
-import shark.memstore2.{MemoryMetadataManager, TablePartition, TablePartitionStats}
+import shark.memstore2.{MemoryMetadataManager, Table, TablePartition, TablePartitionStats}
 import shark.tachyon.TachyonException
 
 
@@ -53,9 +53,42 @@ class TachyonTableReader(@transient _tableDesc: TableDesc) extends TableReader {
   private val _tableName = _tableNameSplit(1)
 
   override def makeRDDForTable(hiveTable: HiveTable): RDD[_] = {
-    // Table is in Tachyon.
-    val tableKey = SharkEnv.makeTachyonTableKey(_databaseName, _tableName)
-    if (!SharkEnv.tachyonUtil.tableExists(tableKey)) {
+    val tableKey = MemoryMetadataManager.makeTableKey(_databaseName, _tableName)
+    makeRDD(tableKey, hivePartitionKeyOpt = None)
+  }
+
+  override def makeRDDForPartitionedTable(partitions: Seq[HivePartition]): RDD[_] = {
+    val tableKey = MemoryMetadataManager.makeTableKey(_databaseName, _tableName)
+    val hivePartitionRDDs = partitions.map { hivePartition =>
+      val partDesc = Utilities.getPartitionDesc(hivePartition)
+      // Get partition field info
+      val partSpec = partDesc.getPartSpec()
+      val partProps = partDesc.getProperties()
+
+      val partColsDelimited = partProps.getProperty(META_TABLE_PARTITION_COLUMNS)
+      // Partitioning columns are delimited by "/"
+      val partCols = partColsDelimited.trim().split("/").toSeq
+      // 'partValues[i]' contains the value for the partitioning column at 'partCols[i]'.
+      val partValues = if (partSpec == null) {
+        Array.fill(partCols.size)(new String)
+      } else {
+        partCols.map(col => new String(partSpec.get(col))).toArray
+      }
+      val partitionKeyStr = MemoryMetadataManager.makeHivePartitionKeyStr(partCols, partSpec)
+      makeRDD(tableKey, Some(partitionKeyStr))
+    }
+    if (hivePartitionRDDs.size > 0) {
+      new UnionRDD(hivePartitionRDDs.head.context, hivePartitionRDDs)
+    } else {
+      new EmptyRDD[Object](SharkEnv.sc)
+    }
+  }
+
+  private def makeRDD(
+      tableKey: String,
+      hivePartitionKeyOpt: Option[String]): RDD[TablePartition] = {
+    // Check that the table is in Tachyon.
+    if (!SharkEnv.tachyonUtil.tableExists(tableKey, hivePartitionKey = None)) {
       throw new TachyonException("Table " + tableKey + " does not exist in Tachyon")
     }
     logInfo("Loading table " + tableKey + " from Tachyon.")
@@ -66,17 +99,13 @@ class TachyonTableReader(@transient _tableDesc: TableDesc) extends TableReader {
     val shouldFetchStatsFromTachyon = SharkEnv.memoryMetadataManager.getStats(
       _databaseName, _tableName).isEmpty
     if (shouldFetchStatsFromTachyon) {
-      val statsByteBuffer = SharkEnv.tachyonUtil.getTableMetadata(tableKey)
+      val statsByteBuffer = SharkEnv.tachyonUtil.getTableMetadata(tableKey, hivePartitionKeyOpt)
       val indexToStats = JavaSerializer.deserialize[collection.Map[Int, TablePartitionStats]](
         statsByteBuffer.array())
       logInfo("Loading table " + tableKey + " stats from Tachyon.")
       SharkEnv.memoryMetadataManager.putStats(_databaseName, _tableName, indexToStats)
     }
-    SharkEnv.tachyonUtil.createRDD(tableKey)
-  }
-
-  override def makeRDDForPartitionedTable(partitions: Seq[HivePartition]): RDD[_] = {
-    throw new UnsupportedOperationException("Partitioned tables are not yet supported for Tachyon.")
+    SharkEnv.tachyonUtil.createRDD(tableKey, hivePartitionKeyOpt)
   }
 }
 
@@ -101,8 +130,8 @@ class HeapTableReader(@transient _tableDesc: TableDesc) extends TableReader {
   }
 
   /**
-   * Fetch an RDD from the Shark metastore using each partition key given, and return a union of all
-   * the fetched RDDs.
+   * Fetches an RDD from the Shark metastore for each partition key given. Returns a single, unioned
+   * RDD representing all of the specified partition keys.
    *
    * @param partitions A collection of Hive-partition metadata, such as partition columns and
    *     partition key specifications.

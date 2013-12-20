@@ -30,7 +30,7 @@ import org.apache.hadoop.hive.ql.plan.api.StageType
 import org.apache.spark.rdd.EmptyRDD
 
 import shark.{LogHelper, SharkEnv}
-import shark.memstore2.{CacheType, MemoryMetadataManager, PartitionedMemoryTable}
+import shark.memstore2.{CacheType, MemoryTable, MemoryMetadataManager, PartitionedMemoryTable}
 import shark.memstore2.{SharkTblProperties, TablePartitionStats}
 import shark.util.HiveUtils
 
@@ -148,7 +148,7 @@ private[shark] class SharkDDLTask extends HiveTask[SharkDDLWork]
 
     if (partSpecs == null) {
       // The command is a true DROP TABLE.
-      SharkEnv.dropTable(dbName, tableName)
+      SharkEnv.memoryMetadataManager.removeTable(dbName, tableName)
     } else {
       // The command is an ALTER TABLE DROP PARTITION
       val partitionedTable = getPartitionedTableWithAssertions(dbName, tableName)
