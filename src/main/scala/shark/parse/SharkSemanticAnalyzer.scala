@@ -193,10 +193,6 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
                 val isPartitioned = SharkEnv.memoryMetadataManager.isHivePartitioned(
                   databaseName, cachedTableName)
                 var hivePartitionKey = if (isPartitioned) {
-                  if (table.cacheMode == CacheType.TACHYON) {
-                    throw new SemanticException(
-                      "Shark does not support caching Hive-partitioned table(s) in Tachyon.")
-                  }
                   SharkSemanticAnalyzer.getHivePartitionKey(qb)
                 } else {
                   new String

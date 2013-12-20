@@ -83,8 +83,7 @@ class SharkDDLSemanticAnalyzer(conf: HiveConf) extends DDLSemanticAnalyzer(conf)
 
     val oldCacheMode = CacheType.fromString(oldTblProps.get(SharkTblProperties.CACHE_FLAG.varname))
     val newCacheMode = CacheType.fromString(newTblProps.get(SharkTblProperties.CACHE_FLAG.varname))
-    val isAlreadyCached = SharkEnv.memoryMetadataManager.containsTable(databaseName, tableName)
-    if (!isAlreadyCached && newCacheMode == CacheType.MEMORY) {
+    if (oldCacheMode == CacheType.NONE && newCacheMode == CacheType.MEMORY) {
       // The table should be cached (and is not already cached).
       val partSpecsOpt = if (hiveTable.isPartitioned) {
         val columnNames = hiveTable.getPartCols.map(_.getName)
@@ -106,17 +105,14 @@ class SharkDDLSemanticAnalyzer(conf: HiveConf) extends DDLSemanticAnalyzer(conf)
         newCacheMode)
       partSpecsOpt.foreach(partSpecs => sparkLoadWork.partSpecs = partSpecs)
       rootTasks.head.addDependentTask(TaskFactory.get(sparkLoadWork, conf))
+    } else if (oldCacheMode == CacheType.MEMORY && newCacheMode == CacheType.NONE) {
+      // Uncache the table.
+      SharkEnv.memoryMetadataManager.dropTableFromMemory(db, databaseName, tableName)
+    } else if (oldCacheMode == CacheType.TACHYON || oldCacheMode == CacheType.MEMORY_ONLY) {
+      throw new SemanticException("For the 'shark.cache' table property, only changes between " +
+        "'MEMORY' abd 'NONE' are supported. Tables stored in TACHYON and MEMORY_ONLY must be " +
+        "dropped.")
     }
-    if (CacheType.shouldCache(oldCacheMode) && !CacheType.shouldCache(newCacheMode)) {
-      if (oldCacheMode == CacheType.MEMORY) {
-        // Uncache the table.
-        SharkEnv.memoryMetadataManager.dropTableFromMemory(db, databaseName, tableName)
-      } else {
-        throw new SemanticException(
-          "A memory-only table should be dropped.")
-      }
-    }
-
   }
 
   def analyzeDropTableOrDropParts(ast: ASTNode) {

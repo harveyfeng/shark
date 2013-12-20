@@ -28,7 +28,7 @@ import tachyon.client.TachyonFS
 import tachyon.client.table.{RawTable, RawColumn}
 
 import shark.SharkEnv
-import shark.memstore2.TablePartition
+import shark.memstore2.{MemoryMetadataManager, TablePartition}
 
 
 /**
@@ -42,44 +42,47 @@ class TachyonUtilImpl(val master: String, val warehousePath: String) extends Tac
     throw new TachyonException("TACHYON_MASTER is set. However, TACHYON_WAREHOUSE_PATH is not.")
   }
 
-  def getPath(tableName: String): String = warehousePath + "/" + tableName
-
-  override def pushDownColumnPruning(rdd: RDD[_], columnUsed: BitSet): Boolean = {
-    if (rdd.isInstanceOf[TachyonTableRDD]) {
-      rdd.asInstanceOf[TachyonTableRDD].setColumnUsed(columnUsed)
-      true
-    } else {
-      false
-    }
+  def getPath(tableKey: String, hivePartitionKey: Option[String]): String = {
+    warehousePath + "/" + tableKey + hivePartitionKey.getOrElse("")
   }
 
+  override def pushDownColumnPruning(rdd: RDD[_], columnUsed: BitSet): Boolean = {
+    val isTachyonTableRdd = rdd.isInstanceOf[TachyonTableRDD]
+    if (isTachyonTableRdd) {
+      rdd.asInstanceOf[TachyonTableRDD].setColumnUsed(columnUsed)
+    }
+    isTachyonTableRdd
+  }
 
   override def tachyonEnabled(): Boolean = (master != null && warehousePath != null)
 
-  override def tableExists(tableName: String): Boolean = {
-    client.exist(getPath(tableName))
+  override def tableExists(tableKey: String, hivePartitionKey: Option[String]): Boolean = {
+    client.exist(getPath(tableKey, hivePartitionKey))
   }
 
-  override def dropTable(tableName: String): Boolean = {
+  override def dropTable(tableKey: String, hivePartitionKey: Option[String]): Boolean = {
     // The second parameter (true) means recursive deletion.
-    client.delete(getPath(tableName), true)
+    client.delete(getPath(tableKey, hivePartitionKey), true)
   }
 
-  override def getTableMetadata(tableName: String): ByteBuffer = {
-    if (!tableExists(tableName)) {
-       throw new TachyonException("Table " + tableName + " does not exist in Tachyon")
+  override def getTableMetadata(tableKey: String, hivePartitionKey: Option[String]): ByteBuffer = {
+    if (!tableExists(tableKey, hivePartitionKey)) {
+      throw new TachyonException("Table " + tableKey + " does not exist in Tachyon")
     }
-    client.getRawTable(getPath(tableName)).getMetadata()
+    client.getRawTable(getPath(tableKey, hivePartitionKey)).getMetadata()
   }
 
-  override def createRDD(tableName: String): RDD[TablePartition] = {
-    new TachyonTableRDD(getPath(tableName), SharkEnv.sc)
+  override def createRDD(tableKey: String, hivePartitionKey: Option[String]): RDD[TablePartition] = {
+    new TachyonTableRDD(getPath(tableKey, hivePartitionKey), SharkEnv.sc)
   }
 
-  override def createTableWriter(tableName: String, numColumns: Int): TachyonTableWriter = {
+  override def createTableWriter(
+      tableKey: String,
+      hivePartitionKey: Option[String],
+      numColumns: Int): TachyonTableWriter = {
     if (!client.exist(warehousePath)) {
       client.mkdir(warehousePath)
     }
-    new TachyonTableWriterImpl(getPath(tableName), numColumns)
+    new TachyonTableWriterImpl(getPath(tableKey, hivePartitionKey), numColumns)
   }
 }
