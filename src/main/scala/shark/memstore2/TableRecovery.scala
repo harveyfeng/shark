@@ -17,11 +17,13 @@
 
 package shark.memstore2
 
+import java.util.{HashMap => JavaHashMap}
+
 import scala.collection.JavaConversions.asScalaBuffer
 
 import org.apache.hadoop.hive.ql.metadata.Hive
 
-import shark.LogHelper
+import shark.{LogHelper, SharkEnv}
 import shark.util.QueryRewriteUtils
 
 /**
@@ -42,12 +44,35 @@ object TableRecovery extends LogHelper {
     // Filter for tables that should be reloaded into the cache.
     val currentDbName = db.getCurrentDatabase()
     for (databaseName <- db.getAllDatabases(); tableName <- db.getAllTables(databaseName)) {
-      val tblProps = db.getTable(databaseName, tableName).getParameters
+      val hiveTable = db.getTable(databaseName, tableName)
+      val tblProps = hiveTable.getParameters
       val cacheMode = CacheType.fromString(tblProps.get(SharkTblProperties.CACHE_FLAG.varname))
       if (cacheMode == CacheType.MEMORY) {
         logInfo("Reloading %s.%s into memory.".format(databaseName, tableName))
         val cmd = QueryRewriteUtils.cacheToAlterTable("CACHE %s".format(tableName))
         cmdRunner(cmd)
+      } else if (cacheMode == CacheType.TACHYON) {
+        // Persistece and write-though cache for Tachyon tables are managed by the Tachyon master.
+        // So, Shark just needs to create a Shark Table entry in the MemoryMetadataManager.
+        if (hiveTable.isPartitioned()) {
+          // Create a PartitionedMemoryTable entry and add all partition keys.
+          val partitionedMemoryTable = SharkEnv.memoryMetadataManager.createPartitionedMemoryTable(
+            databaseName, tableName, cacheMode, tblProps)
+          val columnNames = hiveTable.getPartCols.map(_.getName)
+          db.getPartitions(hiveTable).map { hivePartition =>
+            val partSpec = new JavaHashMap[String, String]()
+            val values = hivePartition.getValues()
+            columnNames.zipWithIndex.map { case(name, index) => partSpec.put(name, values(index)) }
+            val hivePartitionKey = MemoryMetadataManager.makeHivePartitionKeyStr(
+              columnNames, partSpec)
+            // Tachyon RDDs are constructed during table scans. Add a NULL `outputRDD` placeholder
+            // so that partition cache policies still work.
+            partitionedMemoryTable.putPartition(hivePartitionKey, newRDD = null)
+          }
+        } else {
+          // Create a MemoryTable entry.
+          SharkEnv.memoryMetadataManager.createMemoryTable(databaseName, tableName, cacheMode)
+        }
       }
     }
     db.setCurrentDatabase(currentDbName)

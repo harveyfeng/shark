@@ -17,8 +17,8 @@
 
 package shark.memstore2
 
-import java.util.concurrent.ConcurrentHashMap
 import java.util.{HashMap=> JavaHashMap, Map => JavaMap}
+import java.util.concurrent.ConcurrentHashMap
 
 import scala.collection.JavaConversions._
 import scala.collection.concurrent
@@ -27,11 +27,12 @@ import org.apache.hadoop.hive.ql.metadata.Hive
 
 import org.apache.spark.rdd.{RDD, UnionRDD}
 
+import shark.{LogHelper, SharkEnv}
 import shark.execution.RDDUtils
 import shark.util.HiveUtils
 
 
-class MemoryMetadataManager {
+class MemoryMetadataManager extends LogHelper {
 
   // Set of tables, from databaseName.tableName to Table object.
   private val _tables: concurrent.Map[String, Table] =
@@ -47,19 +48,19 @@ class MemoryMetadataManager {
       databaseName: String,
       tableName: String,
       stats: collection.Map[Int, TablePartitionStats]) {
-    val tableKey = makeTableKey(databaseName, tableName)
+    val tableKey = MemoryMetadataManager.makeTableKey(databaseName, tableName)
     _keyToStats.put(tableKey, stats)
   }
 
   def getStats(
       databaseName: String,
       tableName: String): Option[collection.Map[Int, TablePartitionStats]] = {
-    val tableKey = makeTableKey(databaseName, tableName)
+    val tableKey = MemoryMetadataManager.makeTableKey(databaseName, tableName)
     _keyToStats.get(tableKey)
   }
 
   def isHivePartitioned(databaseName: String, tableName: String): Boolean = {
-    val tableKey = makeTableKey(databaseName, tableName)
+    val tableKey = MemoryMetadataManager.makeTableKey(databaseName, tableName)
     _tables.get(tableKey) match {
       case Some(table) => table.isInstanceOf[PartitionedMemoryTable]
       case None => false
@@ -67,14 +68,14 @@ class MemoryMetadataManager {
   }
 
   def containsTable(databaseName: String, tableName: String): Boolean = {
-    _tables.contains(makeTableKey(databaseName, tableName))
+    _tables.contains(MemoryMetadataManager.makeTableKey(databaseName, tableName))
   }
 
   def createMemoryTable(
       databaseName: String,
       tableName: String,
       cacheMode: CacheType.CacheType): MemoryTable = {
-    val tableKey = makeTableKey(databaseName, tableName)
+    val tableKey = MemoryMetadataManager.makeTableKey(databaseName, tableName)
     val newTable = new MemoryTable(databaseName, tableName, cacheMode)
     _tables.put(tableKey, newTable)
     newTable
@@ -86,7 +87,7 @@ class MemoryMetadataManager {
       cacheMode: CacheType.CacheType,
       tblProps: JavaMap[String, String]
     ): PartitionedMemoryTable = {
-    val tableKey = makeTableKey(databaseName, tableName)
+    val tableKey = MemoryMetadataManager.makeTableKey(databaseName, tableName)
     val newTable = new PartitionedMemoryTable(databaseName, tableName, cacheMode)
     // Determine the cache policy to use and read any user-specified cache settings.
     val cachePolicyStr = tblProps.getOrElse(SharkTblProperties.CACHE_POLICY.varname,
@@ -100,11 +101,11 @@ class MemoryMetadataManager {
   }
 
   def getTable(databaseName: String, tableName: String): Option[Table] = {
-    _tables.get(makeTableKey(databaseName, tableName))
+    _tables.get(MemoryMetadataManager.makeTableKey(databaseName, tableName))
   }
 
   def getMemoryTable(databaseName: String, tableName: String): Option[MemoryTable] = {
-    val tableKey = makeTableKey(databaseName, tableName)
+    val tableKey = MemoryMetadataManager.makeTableKey(databaseName, tableName)
     val tableOpt = _tables.get(tableKey)
     if (tableOpt.isDefined) {
      assert(tableOpt.get.isInstanceOf[MemoryTable],
@@ -116,7 +117,7 @@ class MemoryMetadataManager {
   def getPartitionedTable(
       databaseName: String,
       tableName: String): Option[PartitionedMemoryTable] = {
-    val tableKey = makeTableKey(databaseName, tableName)
+    val tableKey = MemoryMetadataManager.makeTableKey(databaseName, tableName)
     val tableOpt = _tables.get(tableKey)
     if (tableOpt.isDefined) {
       assert(tableOpt.get.isInstanceOf[PartitionedMemoryTable],
@@ -127,8 +128,8 @@ class MemoryMetadataManager {
 
   def renameTable(databaseName: String, oldName: String, newName: String) {
     if (containsTable(databaseName, oldName)) {
-      val oldTableKey = makeTableKey(databaseName, oldName)
-      val newTableKey = makeTableKey(databaseName, newName)
+      val oldTableKey = MemoryMetadataManager.makeTableKey(databaseName, oldName)
+      val newTableKey = MemoryMetadataManager.makeTableKey(databaseName, newName)
 
       val statsValueEntry = _keyToStats.remove(oldTableKey).get
       val tableValueEntry = _tables.remove(oldTableKey).get
@@ -140,20 +141,38 @@ class MemoryMetadataManager {
   }
 
   /**
-   * Used to drop a table from the Spark in-memory cache and/or disk. All metadata tracked by Shark
-   * (e.g. entry in '_keyToStats' if the table isn't Hive-partitioned) is deleted as well.
+   * Used to drop a table from Tachyon or the Spark in-memory cache and/or disk. All metadata
+   * tracked by Shark (e.g. entry in '_keyToStats' if the table isn't Hive-partitioned) is deleted
+   * as well.
+   *
+   * Note that this is always used in conjunction with a dropTableFromMemory() for handling
+   *'shark.cache' property changes in an ALTER TABLE command, or to finish off a DROP TABLE command
+   * after the table has been deleted from the Hive metastore.
    *
    * @return Option::isEmpty() is true of there is no MemoryTable (and RDD) corresponding to 'key'
-   *     in _keyToMemoryTable. For MemoryTables that are Hive-partitioned, the RDD returned will
-   *     be a UnionRDD comprising RDDs that represent the table's Hive-partitions.
+   *     in _keyToMemoryTable. For tables that are Hive-partitioned, the RDD returned will be a
+   *     UnionRDD comprising RDDs that back the table's Hive-partitions.
    */
   def removeTable(databaseName: String, tableName: String): Option[RDD[_]] = {
-    val tableKey = makeTableKey(databaseName, tableName)
+    val tableKey = MemoryMetadataManager.makeTableKey(databaseName, tableName)
 
-    // Remove MemoryTable's entry from Shark metadata.
+    // Remove Table entry from Shark metadata.
     _keyToStats.remove(tableKey)
-    val tableValue: Option[Table] = _tables.remove(tableKey)
-    tableValue.flatMap(MemoryMetadataManager.unpersistRDDsInTable(_))
+    val tableValueOpt: Option[Table] = _tables.remove(tableKey)
+    tableValueOpt.flatMap { tableValue =>
+      if (tableValue.cacheMode == CacheType.TACHYON) {
+        val isSuccessfulDrop = MemoryMetadataManager.dropTachyonRDDsForTable(tableKey, tableValue)
+        if (isSuccessfulDrop) {
+          logInfo("Table " + tableKey + " has been successfully deleted from Tachyon.")
+        } else {
+          logWarning("Failed to remove table " + tableKey + " from Tachyon.")
+        }
+        // No notion of "memory-only" for Tachyon-backed RDDs.
+        None
+      } else {
+        MemoryMetadataManager.unpersistRDDsForTable(tableValue)
+      }
+    }
   }
 
   def shutdown() {
@@ -191,31 +210,57 @@ class MemoryMetadataManager {
       removeTable(databaseName, tableName)
     }
   }
-
-  // Returns the key "databaseName.tableName".
-  private def makeTableKey(databaseName: String, tableName: String): String = {
-    (databaseName + '.' + tableName).toLowerCase
-  }
 }
 
 
 object MemoryMetadataManager {
 
-  def unpersistRDDsInTable(table: Table): Option[RDD[_]] = {
-    var unpersistedRDD: Option[RDD[_]] = None
-    if (table.isInstanceOf[PartitionedMemoryTable]) {
-      val partitionedTable = table.asInstanceOf[PartitionedMemoryTable]
-      // unpersist() all RDDs for all Hive-partitions.
-      val unpersistedRDDs =  partitionedTable.keyToPartitions.values.map(
-        rdd => RDDUtils.unpersistRDD(rdd)).asInstanceOf[Seq[RDD[Any]]]
-      if (unpersistedRDDs.size > 0) {
-        val unionedRDD = new UnionRDD(unpersistedRDDs.head.context, unpersistedRDDs)
-        unpersistedRDD = Some(unionedRDD)
+  def unpersistRDDsForTable(table: Table): Option[RDD[_]] = {
+    table match {
+      case partitionedTable: PartitionedMemoryTable => {
+        // unpersist() all RDDs for all Hive-partitions.
+        val unpersistedRDDs =  partitionedTable.keyToPartitions.values.map(rdd =>
+          RDDUtils.unpersistRDD(rdd)).asInstanceOf[Seq[RDD[Any]]]
+        if (unpersistedRDDs.size > 0) {
+          val unionedRDD = new UnionRDD(unpersistedRDDs.head.context, unpersistedRDDs)
+          Some(unionedRDD)
+        } else {
+          None
+        }
       }
-    } else {
-      unpersistedRDD = Some(RDDUtils.unpersistRDD(table.asInstanceOf[MemoryTable].tableRDD))
+      case memoryTable: MemoryTable => Some(RDDUtils.unpersistRDD(memoryTable.tableRDD))
     }
-    unpersistedRDD
+  }
+
+  def dropTachyonRDDsForTable(tableKey: String, table: Table): Boolean = {
+    def dropRDDIfExists(tableKey: String, hivePartitionKeyOpt: Option[String]): Boolean = {
+      if (SharkEnv.tachyonUtil.tableExists(tableKey, hivePartitionKeyOpt)) {
+        SharkEnv.tachyonUtil.dropTable(tableKey, hivePartitionKeyOpt)
+      } else {
+        true
+      }
+    }
+    var isSuccesfull = true
+    table match {
+      case partitionedTable: PartitionedMemoryTable => {
+        // Drop the Tachyon RawTable that backs each Hive partition.
+        partitionedTable.keyToPartitions.keys.map { partitionKey =>
+          val definedPartitionKeyOpt = Some(partitionKey)
+          isSuccesfull = isSuccesfull && dropRDDIfExists(tableKey, definedPartitionKeyOpt)
+        }
+      }
+      case memoryTable: MemoryTable => {
+        isSuccesfull = dropRDDIfExists(tableKey, hivePartitionKeyOpt = None)
+      }
+    }
+    isSuccesfull
+  }
+
+  // Returns a key of the form "databaseName.tableName" that uniquely identifies a Shark table.
+  // For example, it's used to track a table's RDDs in MemoryMetadataManager and table paths in the
+  // Tachyon table warehouse.
+  def makeTableKey(databaseName: String, tableName: String): String = {
+    (databaseName + '.' + tableName).toLowerCase
   }
 
   /**

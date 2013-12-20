@@ -1138,7 +1138,6 @@ class SQLSuite extends FunSuite with BeforeAndAfterAll {
     sharkMetastore.shutdown()
     for ((tableName, i) <- globalCachedTableNames.zipWithIndex) {
       val hiveTable = Hive.get().getTable(DEFAULT_DB_NAME, tableName)
-
       // Check that the number of rows from the table on disk remains the same.
       val onDiskCount = sc.sql("select count(*) from %s".format(tableName))(0)
       val cachedCount = cachedTableCounts(i)

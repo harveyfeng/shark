@@ -25,6 +25,7 @@ import scala.collection.concurrent
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 
+import shark.SharkEnv
 import shark.execution.RDDUtils
 
 
@@ -111,12 +112,30 @@ class PartitionedMemoryTable(
     // The loadFunc will upgrade the persistence level of the RDD to the preferred storage level.
     val loadFunc: String => RDDValue = (partitionKey: String) => {
       val rddValue = _keyToPartitions.get(partitionKey).get
-      rddValue.rdd.persist(StorageLevel.MEMORY_AND_DISK)
+      if (cacheMode != CacheType.TACHYON) {
+        rddValue.rdd.persist(StorageLevel.MEMORY_AND_DISK)
+      }
       rddValue
     }
-    // The evictionFunc will unpersist the RDD.
+    // The evictionFunc will unpersist the RDD. This is used to both monitor partition table memory
+    // usage and drop individual partitions (e.g., for ALTER TABLE DROP PARTIITON).
     val evictionFunc: (String, RDDValue) => Unit = (partitionKey, rddValue) => {
-      RDDUtils.unpersistRDD(rddValue.rdd)
+      cacheMode match {
+        case CacheType.TACHYON => {
+          val tableKey = MemoryMetadataManager.makeTableKey(databaseName, tableName)
+          val hivePartitionKeyOpt = Some(partitionKey)
+          // Note:
+          // A Hive-partition corresponds to a Tachyon table, which is identified using the
+          // `tableKey` (database name, table name) and the `hivePartitionKeyOpt` (values for
+          // each partitioning column).
+          // For example, an ALTER TABLE DROP PARTITION is handled by a single
+          // `tachyonUtil#dropTable()` call.
+          if (SharkEnv.tachyonUtil.tableExists(tableKey, hivePartitionKeyOpt)) {
+            SharkEnv.tachyonUtil.dropTable(tableKey, hivePartitionKeyOpt)
+          }
+        }
+        case _ => RDDUtils.unpersistRDD(rddValue.rdd)
+      }
     }
     val newPolicy = CachePolicy.instantiateWithUserSpecs[String, RDDValue](
       cachePolicyStr, fallbackMaxSize, loadFunc, evictionFunc)
