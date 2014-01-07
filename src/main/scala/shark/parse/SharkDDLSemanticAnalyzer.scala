@@ -112,8 +112,9 @@ class SharkDDLSemanticAnalyzer(conf: HiveConf) extends DDLSemanticAnalyzer(conf)
         // Uncache the table.
         SharkEnv.memoryMetadataManager.dropTableFromMemory(db, databaseName, tableName)
       } else {
-        throw new SemanticException(
-          "A memory-only table should be dropped.")
+        throw new SemanticException("For the 'shark.cache' table property, only a change from " +
+          "'MEMORY' to 'NONE' is supported. Tables stored in TACHYON and MEMORY_ONLY must be " +
+          "dropped.")
       }
     }
 
