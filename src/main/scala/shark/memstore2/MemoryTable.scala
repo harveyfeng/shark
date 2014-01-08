@@ -31,6 +31,8 @@ private[shark] class MemoryTable(
   // RDD that contains the contents of this table.
   private var _tableRDD: RDD[TablePartition] = _
 
+  // `tableRDD` is only valid for tables stored in the Spark block manager (i.e., it's `cacheMode`
+  // is `CacheType.MEMORY` or `CacheType.MEMORY_ONLY`).
   def tableRDD: RDD[TablePartition] = _tableRDD
 
   def tableRDD_= (rdd: RDD[TablePartition]) = _tableRDD = rdd

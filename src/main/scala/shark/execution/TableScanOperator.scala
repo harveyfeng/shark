@@ -79,6 +79,7 @@ class TableScanOperator extends TopOperator[TableScanDesc] {
     localHConf = new HiveConf(super.hconf)
     isInMemoryTableScan = SharkEnv.memoryMetadataManager.containsTable(
       table.getDbName, table.getTableName)
+    println("table name: " + table.getDbName + ":" + table.getTableName)
   }
 
   override def outputObjectInspector() = {

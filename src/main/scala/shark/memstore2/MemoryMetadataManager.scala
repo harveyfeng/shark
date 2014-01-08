@@ -167,8 +167,11 @@ class MemoryMetadataManager extends LogHelper {
         } else {
           logWarning("Failed to remove table " + tableKey + " from Tachyon.")
         }
+        // No notion of "memory-only" for Tachyon-backed RDDs.
+        None
+      } else {
+        MemoryMetadataManager.unpersistRDDsForTable(tableValue)
       }
-      MemoryMetadataManager.unpersistRDDsForTable(tableValue)
     }
   }
 

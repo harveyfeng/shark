@@ -124,6 +124,12 @@ class PartitionedMemoryTable(
         case CacheType.TACHYON => {
           val tableKey = MemoryMetadataManager.makeTableKey(databaseName, tableName)
           val hivePartitionKeyOpt = Some(partitionKey)
+          // Note:
+          // A Hive-partition corresponds to a Tachyon table, which is identified using the
+          // `tableKey` (database name, table name) and the `hivePartitionKeyOpt` (values for
+          // each partitioning column).
+          // For example, an ALTER TABLE DROP PARTITION is handled by a single
+          // `tachyonUtil#dropTable()` call.
           if (SharkEnv.tachyonUtil.tableExists(tableKey, hivePartitionKeyOpt)) {
             SharkEnv.tachyonUtil.dropTable(tableKey, hivePartitionKeyOpt)
           }

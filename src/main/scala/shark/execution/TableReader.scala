@@ -130,8 +130,8 @@ class HeapTableReader(@transient _tableDesc: TableDesc) extends TableReader {
   }
 
   /**
-   * Fetch an RDD from the Shark metastore using each partition key given, and return a union of all
-   * the fetched RDDs.
+   * Fetches an RDD from the Shark metastore for each partition key given. Returns a single, unioned
+   * RDD representing all of the specified partition keys.
    *
    * @param partitions A collection of Hive-partition metadata, such as partition columns and
    *     partition key specifications.
