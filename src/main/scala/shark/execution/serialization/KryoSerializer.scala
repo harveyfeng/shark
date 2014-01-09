@@ -19,8 +19,10 @@ package shark.execution.serialization
 
 import java.nio.ByteBuffer
 
-import org.apache.spark.SparkEnv
+import org.apache.spark.{SparkContext, SparkEnv}
 import org.apache.spark.serializer.{KryoSerializer => SparkKryoSerializer}
+
+import shark.{SharkContext, SharkEnv}
 
 
 /**
@@ -30,7 +32,17 @@ import org.apache.spark.serializer.{KryoSerializer => SparkKryoSerializer}
  */
 object KryoSerializer {
 
-  @transient val ser = new SparkKryoSerializer(SparkEnv.get.conf)
+  @transient val ser = {
+  	val sparkConf = SharkEnv.sc match {
+	  case sharkContext: SharkContext => {
+	  	val sparkEnv = sharkContext.sparkEnv
+	    SparkEnv.set(sparkEnv)
+	    sparkEnv.conf
+	  }
+	  case sparkContext: SparkContext => SparkEnv.get.conf
+  	}
+  	new SparkKryoSerializer(sparkConf)
+  }
 
   def serialize[T](o: T): Array[Byte] = {
     ser.newInstance().serialize(o).array()
