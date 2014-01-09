@@ -19,6 +19,9 @@ package shark.memstore2
 
 import org.apache.spark.rdd.RDD
 
+import scala.collection.mutable.Buffer
+
+
 /**
  * A metadata container for a table in Shark that's backed by an RDD.
  */
@@ -28,10 +31,42 @@ private[shark] class MemoryTable(
     cacheMode: CacheType.CacheType)
   extends Table(databaseName, tableName, cacheMode) {
 
-  // RDD that contains the contents of this table.
-  private var _tableRDD: RDD[TablePartition] = _
+  var rddValueOpt: Option[RDDValue] = _
 
-  def tableRDD: RDD[TablePartition] = _tableRDD
+  def put(
+  	  newRDD: RDD[TablePartition],
+  	  newStats: collection.Map[Int, TablePartitionStats]
+  	): Option[(RDD[TablePartitionStats, collection.Map[Int, TablePartitionStats]])] = {
+  	val prevRDDAndStatsOpt = rddValueOpt.map(_.toTuple)
+  	if (rddValueOpt.isDefined) {
+  	  rddValueOpt.foreach { rddValue =>
+  	  	rddValue.rdd = newRDD
+  	  	rddValue.stats = newStats
+  	  }
+  	} else {
+      rddValueOpt = Some(new RDDValue(newRDD, newStats))
+  	}
+    prevRDDAndStatsOpt 
+  }
 
-  def tableRDD_= (rdd: RDD[TablePartition]) = _tableRDD = rdd
+  def update(
+  	  newRDD: RDD[TablePartition],
+  	  newStats: Buffer[Int, TablePartitionStats]
+  	): Option[(RDD[TablePartitionStats, collection.Map[Int, TablePartitionStats]])] = {
+    val prevRDDAndStatsOpt = rddValueOpt.map(_.toTuple)
+  	if (rddValueOpt.isDefined) {
+      val (prevRDD, prevStats) = (prevRDDAndStatsOpt.get._1, prevRDDAndStatsOpt.get._1)
+      val updatedRDDValue = rddValueOpt.get
+      updatedRDDValue.rdd = RDDUtils.unionAndFlatten(prevRDD, newRDD)
+      updatedRDDValue.stats = Table.mergeStats(stats, prevStats)
+    } else {
+      put(newRDD, newStats)
+    }
+    prevRDDAndStatsOpt
+  }
+
+  def getTable = rddValueOpt.map(_.rdd)
+
+  def getStats = rddValueOpt.map(_.stats)
+
 }

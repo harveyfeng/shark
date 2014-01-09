@@ -102,7 +102,7 @@ private[shark] class SharkDDLTask extends HiveTask[SharkDDLWork]
       val memoryTable = SharkEnv.memoryMetadataManager.createMemoryTable(
         dbName, tableName, cacheMode)
       // An empty table has a MemoryTable table entry with 'tableRDD' referencing an EmptyRDD.
-      memoryTable.tableRDD = new EmptyRDD(SharkEnv.sc)
+      memoryTable.set(new EmptyRDD(SharkEnv.sc), new Map[Int, TablePartitionStats]())
     }
     // Add an empty stats entry to the Shark metastore.
     SharkEnv.memoryMetadataManager.putStats(dbName, tableName, Map[Int, TablePartitionStats]())

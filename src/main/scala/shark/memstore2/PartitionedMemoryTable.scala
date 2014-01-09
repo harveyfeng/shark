@@ -21,6 +21,7 @@ import java.util.concurrent.{ConcurrentHashMap => ConcurrentJavaHashMap}
 
 import scala.collection.JavaConversions._
 import scala.collection.concurrent
+import scala.collection.mutable.Buffer
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
@@ -42,18 +43,9 @@ class PartitionedMemoryTable(
     cacheMode: CacheType.CacheType)
   extends Table(databaseName, tableName, cacheMode) {
 
-  /**
-   * A simple, mutable wrapper for an RDD. This is needed so that a entry maintained by a
-   * CachePolicy's underlying data structure, such as the LinkedHashMap for LRUCachePolicy, can be
-   * updated without causing an eviction.
-   * The value entires for a single key in
-   * `_keyToPartitions` and `_cachePolicy` will reference the same RDDValue object.
-   */
-  class RDDValue(var rdd: RDD[TablePartition])
-
   // A map from the Hive-partition key to the RDD that contains contents of that partition.
   // The conventional string format for the partition key, 'col1=value1/col2=value2/...', can be
-  // computed using MemoryMetadataManager#makeHivePartitionKeyStr()
+  // computed using MemoryMetadataManager#makeHivePartitionKeyStr().
   private val _keyToPartitions: concurrent.Map[String, RDDValue] =
     new ConcurrentJavaHashMap[String, RDDValue]()
 
@@ -61,6 +53,11 @@ class PartitionedMemoryTable(
   // can be set from the CLI:
   //   `TBLPROPERTIES("shark.partition.cachePolicy", "LRUCachePolicy")`.
   // If 'None', then all partitions will be put in memory.
+  //
+  // Since RDDValue is mutable, entries maintained by a CachePolicy's underlying data structure,
+  // such as the LinkedHashMap for LRUCachePolicy, can be updated without causing an eviction.
+  // The value entires for a single key in
+  // `_keyToPartitions` and `_cachePolicy` will reference the same RDDValue object.
   private var _cachePolicy: CachePolicy[String, RDDValue] = _
 
   def containsPartition(partitionKey: String): Boolean = _keyToPartitions.contains(partitionKey)
@@ -71,32 +68,44 @@ class PartitionedMemoryTable(
     rddValueOpt.map(_.rdd)
   }
 
+  def getStats(partitionKey: String): Option[collection.Map[Int, TablePartitionStats]] = {
+    _keyToPartitions.get(partitionKey).map(_.stats)
+  }
+
   def putPartition(
       partitionKey: String,
       newRDD: RDD[TablePartition],
-      isUpdate: Boolean = false): Option[RDD[TablePartition]] = {
+      newStats: collection.Map[Int, TablePartitionStats]
+    ): Option[(RDD[TablePartition], collection.Map[Int, TablePartitionStats])] = {
     val rddValueOpt = _keyToPartitions.get(partitionKey)
-    val prevRDD: Option[RDD[TablePartition]] = rddValueOpt.map(_.rdd)
-    val newRDDValue = new RDDValue(newRDD)
+    val prevRDDAndStats = rddValueOpt.map(_.toTuple)
+    val newRDDValue = new RDDValue(newRDD, newStats)
     _keyToPartitions.put(partitionKey, newRDDValue)
     _cachePolicy.notifyPut(partitionKey, newRDDValue)
-    prevRDD
+    prevRDDAndStats
   }
 
   def updatePartition(
       partitionKey: String,
-      updatedRDD: RDD[TablePartition]): Option[RDD[TablePartition]] = {
+      newRDD: RDD[TablePartition],
+      newStats: Buffer[Int, TablePartitionStats]
+    ): Option[(RDD[TablePartition], collection.Map[Int, TablePartitionStats])] = {
     val rddValueOpt = _keyToPartitions.get(partitionKey)
-    val prevRDD: Option[RDD[TablePartition]] = rddValueOpt.map(_.rdd)
+    val prevRDDAndStatsOpt = rddValueOpt.map(_.toTuple)
     if (rddValueOpt.isDefined) {
+      val (prevRDD, prevStats) = (prevRDDAndStatsOpt.get._1, prevRDDAndStatsOpt.get._1)
       // This is an update of an old value, so update the RDDValue's `rdd` entry.
       // Don't notify the `_cachePolicy`. Assumes that getPartition() has already been called to
       // obtain the value of the previous RDD.
-      // An RDD update refers to the RDD created from a transform or union.
+      // An RDD update refers to the RDD created from an INSERT.
       val updatedRDDValue = rddValueOpt.get
-      updatedRDDValue.rdd = updatedRDD
+      updatedRDDValue.rdd = RDDUtils.unionAndFlatten(prevRDD, newRDD)
+      updatedRDDValue.stats = Table.mergeStats(stats, prevStats)
+    } else {
+      // No previous RDDValue entry currently exists for `partitionKey`, so add one.
+      putPartition(partitionKey, newRDD, newStats)
     }
-    prevRDD
+    prevRDDAndStatsOpt
   }
 
   def removePartition(partitionKey: String): Option[RDD[TablePartition]] = {

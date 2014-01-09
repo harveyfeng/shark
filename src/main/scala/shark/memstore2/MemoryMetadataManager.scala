@@ -37,7 +37,6 @@ class MemoryMetadataManager {
   private val _tables: concurrent.Map[String, Table] =
     new ConcurrentHashMap[String, Table]()
 
-  // TODO(harvey): Support stats for Hive-partitioned tables.
   // Set of stats, from databaseName.tableName to the stats. This is guaranteed to have the same
   // structure / size as the _tables map.
   private val _keyToStats: concurrent.Map[String, collection.Map[Int, TablePartitionStats]] =
