@@ -19,9 +19,10 @@ package shark.execution.serialization
 
 import java.nio.ByteBuffer
 
-import org.apache.spark.{SparkConf, SparkContext, SparkEnv}
+import org.apache.spark.SparkConf
 import org.apache.spark.serializer.{KryoSerializer => SparkKryoSerializer}
 
+import shark.SharkContext
 
 /**
  * Java object serialization using Kryo. This is much more efficient, but Kryo
