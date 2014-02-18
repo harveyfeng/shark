@@ -18,9 +18,9 @@
 import sbt._
 import Keys._
 
-import com.typesafe.sbt.pgp.PgpKeys._
 import scala.util.Properties.{ envOrNone => env }
 
+import com.typesafe.sbt.pgp.PgpKeys._
 import net.virtualvoid.sbt.graph.{Plugin => DependencyGraphPlugin}
 import sbtassembly.Plugin._
 import sbtassembly.Plugin.AssemblyKeys._
@@ -29,11 +29,11 @@ import sbtassembly.Plugin.AssemblyKeys._
 object SharkBuild extends Build {
 
   // Shark version
-  val SHARK_VERSION = "0.9.0-SNAPSHOT"
+  val SHARK_VERSION = "0.9.0"
 
-  val SHARK_ORGANIZATION = "edu.berkeley.cs.amplab"
+  val SHARK_ORGANIZATION = "edu.berkeley.cs.shark"
 
-  val HIVE_VERSION = "0.11.0-shark-SNAPSHOT"
+  val HIVE_VERSION = "0.11.0-shark"
 
   val SPARK_VERSION = "0.9.0-incubating"
 
